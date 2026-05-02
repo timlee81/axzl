@@ -10,8 +10,3 @@ namespace Axzl
 
 {
 }
-
-int main()
-{
-    return 0;
-}
