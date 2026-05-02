@@ -1,0 +1,12 @@
+# Disable formatting for everything
+DisableFormat: true
+
+---
+Language: Cpp
+DisableFormat: false
+BasedOnStyle: WebKit
+BreakBeforeBraces: Allman
+AccessModifierOffset: -4
+ConstructorInitializerIndentWidth: 4
+
+# UseTab: Never
