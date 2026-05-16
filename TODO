@@ -21,4 +21,10 @@ Shared Memory
 Timer, Multiple on single threaded (lo pri)
 Timer, Single Thread per timer (hi pri)
 
+Super Sync Object
+-Sync poll() and local condvar events
+
+IO non-blocking socket send and receive object
+
+
 UnitTest
