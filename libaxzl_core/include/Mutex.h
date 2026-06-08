@@ -4,8 +4,9 @@
  */
 #pragma once
 
-#include <string>
+#include "Log.h"
 
+#include <string>
 #if defined(_POSIX_THREADS)
 #include <pthread.h>
 #endif

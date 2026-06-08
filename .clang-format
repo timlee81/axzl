@@ -7,6 +7,8 @@ DisableFormat: false
 BasedOnStyle: WebKit
 BreakBeforeBraces: Allman
 AccessModifierOffset: -4
-ConstructorInitializerIndentWidth: 4
+ConstructorInitializerIndentWidth: 0
+
+IncludeBlocks: Regroup
 
 # UseTab: Never
