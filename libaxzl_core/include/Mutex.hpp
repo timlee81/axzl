@@ -99,20 +99,18 @@ using RobustSharedConfig = MutexAttr<MutexType::Normal, MutexShared::Shared, Mut
 class Mutex
 {
 public:
-    /*
-        Mutex(const char* name)
-        : mName(name)
-        , mLog(nullptr)
-        // Change mlog here to Null instance
-        {
-        }
+    /**
+     * Simple constructor — takes just a name and uses defaults for log and attributes
+     */
+    explicit Mutex(const char* name = "NotSmartMtx",
+        std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr })
+    : mName(name)
+    , mLog(std::shared_ptr<Log>(nullptr))
+    {
+        // Init(DefaultConfig { });
+        Init<DefaultConfig>();
+    }
 
-        Mutex(const char* name, std::shared_ptr<Log>& log)
-        : mName(name)
-        , mLog(log)
-        {
-        }
-    */
     /**
      *  Templated constructor maps a MutexAttr's static fields to pthread
      * attribute calls at compile time. All setter return values are checked;
@@ -120,12 +118,12 @@ public:
      */
     template <typename Attrib>
     explicit Mutex(const char* name = "NotSmartMtx",
-        std::shared_ptr<Log>& log = std::shared_ptr<Log>(nullptr),
+        std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
         const Attrib& attr = DefaultConfig { })
     : mName(name)
     , mLog(log)
     {
-        Init(attr);
+        Init<Attrib>();
     }
 
     /**
@@ -166,9 +164,7 @@ public:
     {
         int rv = pthread_mutex_lock(&mMutex);
         if (rv != 0)
-        {
             LockFail(rv);
-        }
     }
     /** Lockable compliant */
     void lock() { Lock(); }
@@ -177,9 +173,7 @@ public:
     {
         int rv = pthread_mutex_unlock(&mMutex);
         if (rv != 0)
-        {
             UnlockFail(rv);
-        }
     }
     /** Lockable compliant */
     void unlock() { Unlock(); }
@@ -203,7 +197,8 @@ private:
      * any failure destroys the attr and throws before touching mMutex.
      */
     template <typename Attrib>
-    void Init(Attrib /*tag*/)
+    // void Init(Attrib&& /*tag*/)
+    void Init(/*tag*/)
     {
         pthread_mutexattr_t attr;
         int rv;
@@ -246,6 +241,7 @@ private:
         // REVISIT
         catch (...)
         {
+            pthread_mutexattr_destroy(&attr);
         }
     }
 
@@ -260,12 +256,12 @@ private:
      *     else throw;
      * }
      */
-    void Consistent()
+    bool Consistent()
     {
-        int rv;
-        rv = pthread_mutex_consistent(&mMutex);
+        int rv = pthread_mutex_consistent(&mMutex);
         if (rv != 0)
-            throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent");
+            return false;
+        return true;
     }
 
     void LockFail(int rv)
