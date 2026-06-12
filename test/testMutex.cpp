@@ -1,4 +1,5 @@
-#include "Mutex.h"
+#include "Mutex.hpp"
+
 #include <iostream>
 
 int main()

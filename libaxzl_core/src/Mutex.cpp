@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: BSD-2-Clause-Patent
  */
 
-#include <Mutex.h>
+#include "Mutex.hpp"
+
 #include <pthread.h>
 
 namespace Axzl
