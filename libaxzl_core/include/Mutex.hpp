@@ -48,6 +48,15 @@ enum class MutexProtocol
 /**
  * Attribute Object
  */
+struct MutexAttributes
+{
+    MutexType type = MutexType::Normal;
+    MutexShared shared = MutexShared::Private;
+    MutexRobust robust = MutexRobust::Stalled;
+    MutexProtocol proto = MutexProtocol::None;
+    int priorityCeiling = 0;
+};
+/*
 template <
     MutexType Type = MutexType::Normal,
     MutexShared Shared = MutexShared::Private,
@@ -63,10 +72,12 @@ struct MutexAttr
     static constexpr int priorityCeiling = Ceiling;
 };
 
+*/
 /**
  * Common Mutex Types
  */
 
+/*
 // Standard thread synchronization within a single process.
 using DefaultConfig = MutexAttr<>;
 
@@ -81,6 +92,22 @@ using SharedConfig = MutexAttr<MutexType::Normal, MutexShared::Shared>;
 
 // Inter-process communication that safely reports if a process crashes while holding the lock.
 using RobustSharedConfig = MutexAttr<MutexType::Normal, MutexShared::Shared, MutexRobust::Robust>;
+*/
+
+// Standard thread synchronization within a single process.
+inline constexpr MutexAttributes DefaultConfig { };
+
+// Allows a single thread to safely relock the same mutex recursively.
+inline constexpr MutexAttributes RecursiveConfig { MutexType::Recursive };
+
+// Safe debugging profile that returns an error code on deadlocks or improper unlocks.
+inline constexpr MutexAttributes ErrorCheckConfig { MutexType::ErrorCheck };
+
+// Inter-process communication profile (for use in shared memory).
+inline constexpr MutexAttributes SharedConfig { MutexType::Normal, MutexShared::Shared };
+
+// Inter-process communication that safely reports if a process crashes while holding the lock.
+inline constexpr MutexAttributes RobustSharedConfig { MutexType::Normal, MutexShared::Shared, MutexRobust::Robust };
 
 /**
  * Helper for failed construction
@@ -103,44 +130,21 @@ public:
      * Simple constructor — takes just a name and uses defaults for log and attributes
      */
     explicit Mutex(const char* name = "NotSmartMtx",
-        std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr })
+        std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
+        const MutexAttributes& attrs = DefaultConfig)
     : mName(name)
     , mLog(std::shared_ptr<Log>(nullptr))
+    , mMutexAttrs(attrs)
     {
-        // Init(DefaultConfig { });
-        Init<DefaultConfig>();
+        Init(mMutexAttrs);
     }
-
-    /**
-     *  Templated constructor maps a MutexAttr's static fields to pthread
-     * attribute calls at compile time. All setter return values are checked;
-     * any failure destroys the attr and throws before touching mMutex.
-     */
-    template <typename Attrib>
-    explicit Mutex(const char* name = "NotSmartMtx",
-        std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
-        const Attrib& attr = DefaultConfig { })
-    : mName(name)
-    , mLog(log)
-    {
-        Init<Attrib>();
-    }
-
-    /**
-     * Default constructor
-     */
-    /*
-    Mutex()
-    : Mutex("Not Smart", nullptr, DefaultConfig { })
-    {
-    }
-    */
 
     /**
      * Move constructor — invalidates the source to prevent double-destroy.
      */
     Mutex(Mutex&& other) noexcept
     : mMutex(other.mMutex)
+    , mRobust(other.mRobust)
     , mValid(other.mValid)
     {
         other.mValid = false;
@@ -192,69 +196,13 @@ public:
 
 private:
     /**
-     *  Templated constructor maps a MutexAttr's static fields to pthread
-     * attribute calls at compile time. All setter return values are checked;
-     * any failure destroys the attr and throws before touching mMutex.
+     * Initialize the mutex with attributes
      */
-    template <typename Attrib>
-    // void Init(Attrib&& /*tag*/)
-    void Init(/*tag*/)
-    {
-        pthread_mutexattr_t attr;
-        int rv;
-        try
-        {
-            rv = pthread_mutexattr_init(&attr);
-            if (rv != 0)
-                throw std::system_error(rv, std::system_category(), "pthread_mutexattr_init");
-
-            rv = pthread_mutexattr_settype(&attr, static_cast<int>(Attrib::type));
-            if (rv != 0)
-                throw std::system_error(rv, std::system_category(), "pthread_mutexattr_settype");
-
-            rv = pthread_mutexattr_setpshared(&attr, static_cast<int>(Attrib::shared));
-            if (rv != 0)
-                throw std::system_error(rv, std::system_category(), "pthread_mutexattr_setpshared");
-
-            rv = pthread_mutexattr_setrobust(&attr, static_cast<int>(Attrib::robust));
-            if (rv != 0)
-                throw std::system_error(rv, std::system_category(), "pthread_mutexattr_setrobust");
-
-            rv = pthread_mutexattr_setprotocol(&attr, static_cast<int>(Attrib::proto));
-            if (rv != 0)
-                throw std::system_error(rv, std::system_category(), "pthread_mutexattr_setprotocol");
-
-            if constexpr (Attrib::proto == MutexProtocol::Protect)
-            {
-                rv = pthread_mutexattr_setprioceiling(&attr, Attrib::priorityCeiling);
-                if (rv != 0)
-                    throw std::system_error(rv, std::system_category(), "pthread_mutexattr_setprioceiling");
-            }
-
-            rv = pthread_mutex_init(&mMutex, &attr);
-            if (rv != 0)
-                throw std::system_error(rv, std::system_category(), "pthread_mutex_init");
-
-            mValid = true;
-            pthread_mutexattr_destroy(&attr);
-        }
-        // REVISIT
-        catch (...)
-        {
-            pthread_mutexattr_destroy(&attr);
-        }
-    }
+    void Init(const MutexAttributes& attrs);
 
     /**
      * Call after catching EOWNERDEAD on a robust mutex to signal that shared
      * state has been repaired and the mutex is usable again.
-     *
-     * Typical usage:
-     * try { m.Lock(); }
-     * catch (const std::system_error& e) {
-     *     if (e.code().value() == EOWNERDEAD) { Repair(); m.Consistent(); }
-     *     else throw;
-     * }
      */
     bool Consistent()
     {
@@ -262,21 +210,21 @@ private:
         if (rv != 0)
             return false;
         return true;
+
+        // TRY LOCK aGAIN
     }
 
-    void LockFail(int rv)
-    {
-        //            if (mLog)
-        // throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
-    }
+    /** Long-form for failure cases */
+    void LockFail(int rv);
+    void UnlockFail(int rv);
 
-    void UnlockFail(int rv)
-    {
-        //            if (mLog)
-        // throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
-    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////
+
     /** Mutex name */
     std::string mName;
+
+    /** Cached mutex attributes */
+    MutexAttributes mMutexAttrs;
 
     /** Log interface */
     std::shared_ptr<Log> mLog;
@@ -285,7 +233,9 @@ private:
     pthread_mutex_t mMutex { };
 
     /** Valid flag */
-    bool mValid = false;
-};
+    bool mValid { false };
 
+    /** Robust flag */
+    bool mRobust { false };
+};
 }
