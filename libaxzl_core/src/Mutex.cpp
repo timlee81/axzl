@@ -61,7 +61,10 @@ void Mutex::Init(const MutexAttributes& attrs)
         pthread_mutexattr_destroy(&pattr);
 
         if (mLog)
-            mLog->Error("{}: [{}] Mutex init failed with '{}'", __func__, mName, strerror(rv));
+        {
+            mLog->Error("{}: [{}] Mutex init failed on '{}' with '{}'",
+                __func__, errorFunc, mName, strerror(rv));
+        }
     }
 }
 
@@ -104,7 +107,7 @@ void Mutex::LockFail(int rv)
     else
     {
         if (mLog)
-            mLog->Error("{}: [{}] Lock failed with {}", strerror(rv));
+            mLog->Error("{}: [{}] Lock failed with {}", __func__, mName, strerror(rv));
         else
             throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
     }
@@ -114,17 +117,14 @@ void Mutex::LockFail(int rv)
 void Mutex::UnlockFail(int rv)
 {
     if (mLog)
-        mLog->Error("{}: [{}] Unlock failed with {}", strerror(rv));
+        mLog->Error("{}: [{}] Unlock failed with {}", __func__, mName, strerror(rv));
     else
-        throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
+        throw std::system_error(rv, std::system_category(), "pthread_mutex_unlock");
 }
 
 int Mutex::Consistent()
 {
-    int rv = pthread_mutex_consistent(&mMutex);
-    if (rv != 0)
-        return false;
-    return true;
+    return pthread_mutex_consistent(&mMutex);
 }
 
 }

@@ -91,13 +91,13 @@ public:
      *
      * @param name Name of the mutex for debug
      * @param log Logger
-     * @param attrs POSIX Mutex attributes
+     * @param attrs POSIX Mutex attributes          xs
      */
     explicit Mutex(const char* name = "NotSmartMtx",
         std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
         const MutexAttributes& attrs = DefaultConfig)
     : mName(name)
-    , mLog(std::shared_ptr<Log>(nullptr))
+    , mLog(log)
     , mMutexAttrs(attrs)
     {
         Init(mMutexAttrs);
