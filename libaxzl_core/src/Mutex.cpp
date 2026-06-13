@@ -51,12 +51,17 @@ void Mutex::Init(const MutexAttributes& attrs)
             return "pthread_mutex_init";
 
         mValid = true;
+        mRobust = (attrs.robust == MutexRobust::Robust);
         pthread_mutexattr_destroy(&pattr);
         return "";
     }(); // Execute
 
     if (rv != 0)
+    {
         pthread_mutexattr_destroy(&pattr);
+
+        // LOG or throw
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -67,25 +72,36 @@ void Mutex::LockFail(int rv)
         // Previous owner died — mutex is locked but marked inconsistent.
         // Repair is the caller's responsibility before the next Unlock();
         // we make it consistent internally so the mutex remains usable.
-        (void)Consistent();
-
-        // TRY LOCK AGAIN
+        if (Consistent())
+        {
+            int rv = pthread_mutex_lock(&mMutex);
+        }
+        else
+        {
+            // LOG or exception
+        }
         return;
     }
-
-    if (rv == EOWNERDEAD)
-        (void)Consistent();
-    //            if (mLog)
-    // throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
+    else
+    {
+        // LOG or throw
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void Mutex::UnlockFail(int rv)
 {
-    {
-        //            if (mLog)
-        // throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
-    }
+    // LOG or throws
+}
+
+bool Mutex::Consistent()
+{
+    // LOG consistent attempt
+
+    int rv = pthread_mutex_consistent(&mMutex);
+    if (rv != 0)
+        return false;
+    return true;
 }
 
 }

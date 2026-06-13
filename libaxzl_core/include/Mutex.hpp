@@ -56,43 +56,10 @@ struct MutexAttributes
     MutexProtocol proto = MutexProtocol::None;
     int priorityCeiling = 0;
 };
-/*
-template <
-    MutexType Type = MutexType::Normal,
-    MutexShared Shared = MutexShared::Private,
-    MutexRobust Robust = MutexRobust::Stalled,
-    MutexProtocol Proto = MutexProtocol::None,
-    int Ceiling = 0>
-struct MutexAttr
-{
-    static constexpr MutexType type = Type;
-    static constexpr MutexShared shared = Shared;
-    static constexpr MutexRobust robust = Robust;
-    static constexpr MutexProtocol proto = Proto;
-    static constexpr int priorityCeiling = Ceiling;
-};
 
-*/
 /**
  * Common Mutex Types
  */
-
-/*
-// Standard thread synchronization within a single process.
-using DefaultConfig = MutexAttr<>;
-
-// Allows a single thread to safely relock the same mutex recursively.
-using RecursiveConfig = MutexAttr<MutexType::Recursive>;
-
-// Safe debugging attribute that returns an error code on deadlocks or improper unlocks.
-using ErrorCheckConfig = MutexAttr<MutexType::ErrorCheck>;
-
-// Inter-process communication attribute (for use in shared memory).
-using SharedConfig = MutexAttr<MutexType::Normal, MutexShared::Shared>;
-
-// Inter-process communication that safely reports if a process crashes while holding the lock.
-using RobustSharedConfig = MutexAttr<MutexType::Normal, MutexShared::Shared, MutexRobust::Robust>;
-*/
 
 // Standard thread synchronization within a single process.
 inline constexpr MutexAttributes DefaultConfig { };
@@ -110,24 +77,21 @@ inline constexpr MutexAttributes SharedConfig { MutexType::Normal, MutexShared::
 inline constexpr MutexAttributes RobustSharedConfig { MutexType::Normal, MutexShared::Shared, MutexRobust::Robust };
 
 /**
- * Helper for failed construction
- */
-//[[noreturn]] inline void DestroyAttrAndThrow(pthread_mutexattr_t& attr, int rv, const char* what)
-//{
-//    pthread_mutexattr_destroy(&attr);
-//    throw std::system_error(rv, std::system_category(), what);
-//}
-
-/**
- * Implement Lockable
+ * Mutex type for real POSIX systems
+ * std::mutex is lovely, but it lacks attributes needed for constrained systems.
  *
- *    Also should implement TryLockable and TimedLockable
+ * Implement Lockable
+ *  Also should implement TryLockable and TimedLockable
  */
 class Mutex
 {
 public:
     /**
      * Simple constructor — takes just a name and uses defaults for log and attributes
+     *
+     * @param name Name of the mutex for debug
+     * @param log Logger
+     * @param attr POSIX Mutex attributes
      */
     explicit Mutex(const char* name = "NotSmartMtx",
         std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
@@ -139,9 +103,7 @@ public:
         Init(mMutexAttrs);
     }
 
-    /**
-     * Move constructor — invalidates the source to prevent double-destroy.
-     */
+    /** Move constructor — invalidates the source to prevent double-destroy. */
     Mutex(Mutex&& other) noexcept
     : mMutex(other.mMutex)
     , mRobust(other.mRobust)
@@ -182,8 +144,10 @@ public:
     /** Lockable compliant */
     void unlock() { Unlock(); }
 
-    // Returns true if the lock was acquired, false if already held (EBUSY).
-    // noexcept per standard Lockable convention; non-zero result → false.
+    /**
+     *  Returns true if the lock was acquired, false if already held (EBUSY).
+     * noexcept per standard Lockable convention; non-zero result → false.
+     */
     bool TryLock() noexcept
     {
         return pthread_mutex_trylock(&mMutex) == 0;
@@ -204,15 +168,7 @@ private:
      * Call after catching EOWNERDEAD on a robust mutex to signal that shared
      * state has been repaired and the mutex is usable again.
      */
-    bool Consistent()
-    {
-        int rv = pthread_mutex_consistent(&mMutex);
-        if (rv != 0)
-            return false;
-        return true;
-
-        // TRY LOCK aGAIN
-    }
+    bool Consistent();
 
     /** Long-form for failure cases */
     void LockFail(int rv);
