@@ -91,7 +91,7 @@ public:
      *
      * @param name Name of the mutex for debug
      * @param log Logger
-     * @param attr POSIX Mutex attributes
+     * @param attrs POSIX Mutex attributes
      */
     explicit Mutex(const char* name = "NotSmartMtx",
         std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
@@ -168,7 +168,7 @@ private:
      * Call after catching EOWNERDEAD on a robust mutex to signal that shared
      * state has been repaired and the mutex is usable again.
      */
-    bool Consistent();
+    int Consistent();
 
     /** Long-form for failure cases */
     void LockFail(int rv);

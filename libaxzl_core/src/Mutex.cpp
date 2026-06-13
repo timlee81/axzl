@@ -60,7 +60,8 @@ void Mutex::Init(const MutexAttributes& attrs)
     {
         pthread_mutexattr_destroy(&pattr);
 
-        // LOG or throw
+        if (mLog)
+            mLog->Error("{}: [{}] Mutex init failed with '{}'", __func__, mName, strerror(rv));
     }
 }
 
@@ -72,32 +73,54 @@ void Mutex::LockFail(int rv)
         // Previous owner died — mutex is locked but marked inconsistent.
         // Repair is the caller's responsibility before the next Unlock();
         // we make it consistent internally so the mutex remains usable.
-        if (Consistent())
+        int rvConsistent = Consistent();
+        if (rvConsistent == 0)
         {
-            int rv = pthread_mutex_lock(&mMutex);
+            rv = pthread_mutex_lock(&mMutex);
+            if (mLog)
+            {
+                mLog->Error("{}: [{}] Robust mutex EOWNERDEAD revived, but failed to lock with '{}'",
+                    __func__, mName, strerror(rv));
+            }
+            else
+            {
+                throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent");
+            }
         }
         else
         {
-            // LOG or exception
+            if (mLog)
+            {
+                mLog->Error("{}: [{}] Robust mutex EOWNERDEAD attempt to revive failed with '{}'",
+                    __func__, mName, strerror(rvConsistent));
+            }
+            else
+            {
+                throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent");
+            }
         }
         return;
     }
     else
     {
-        // LOG or throw
+        if (mLog)
+            mLog->Error("{}: [{}] Lock failed with {}", strerror(rv));
+        else
+            throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void Mutex::UnlockFail(int rv)
 {
-    // LOG or throws
+    if (mLog)
+        mLog->Error("{}: [{}] Unlock failed with {}", strerror(rv));
+    else
+        throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
 }
 
-bool Mutex::Consistent()
+int Mutex::Consistent()
 {
-    // LOG consistent attempt
-
     int rv = pthread_mutex_consistent(&mMutex);
     if (rv != 0)
         return false;
