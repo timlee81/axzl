@@ -1,5 +1,6 @@
 # Create the axzl_core library from source files
 add_library(axzl_core
+    src/Error.cpp
     src/Mutex.cpp
 )
 

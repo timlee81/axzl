@@ -91,7 +91,7 @@ public:
      *
      * @param name Name of the mutex for debug
      * @param log Logger
-     * @param attrs POSIX Mutex attributes          xs
+     * @param attrs POSIX Mutex attributes
      */
     explicit Mutex(const char* name = "NotSmartMtx",
         std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
@@ -100,10 +100,12 @@ public:
     , mLog(log)
     , mMutexAttrs(attrs)
     {
-        Init(mMutexAttrs);
+        Init();
     }
 
-    /** Move constructor — invalidates the source to prevent double-destroy. */
+    /** Move constructor  */
+    Mutex(Mutex&& other) = delete;
+    /*
     Mutex(Mutex&& other) noexcept
     : mMutex(other.mMutex)
     , mRobust(other.mRobust)
@@ -111,6 +113,7 @@ public:
     {
         other.mValid = false;
     }
+    */
 
     /** Move-assign omitted: would need to destroy an existing mutex first. */
     Mutex& operator=(Mutex&&) = delete;
@@ -162,13 +165,7 @@ private:
     /**
      * Initialize the mutex with attributes
      */
-    void Init(const MutexAttributes& attrs);
-
-    /**
-     * Call after catching EOWNERDEAD on a robust mutex to signal that shared
-     * state has been repaired and the mutex is usable again.
-     */
-    int Consistent();
+    void Init();
 
     /** Long-form for failure cases */
     void LockFail(int rv);
