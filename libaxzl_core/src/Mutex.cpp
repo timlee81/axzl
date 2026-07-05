@@ -5,6 +5,8 @@
 
 #include "Mutex.hpp"
 
+#include "Error.hpp"
+
 #include <pthread.h>
 
 namespace Axzl
@@ -16,8 +18,7 @@ void Mutex::Init()
     pthread_mutexattr_t pAttr;
     int rv = pthread_mutexattr_init(&pAttr);
     if (rv != 0)
-        LogAndThrow();
-    //    return "pthread_mutexattr_init";
+        ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutexattr_init");
 
     /* Immediate exec - Need to destroy pthread attr object if failure occurs */
     const char* errorFunc = [this, &lrv = rv, &lpAttr = pAttr]() -> const char*
@@ -56,20 +57,14 @@ void Mutex::Init()
 
     if (rv != 0)
     {
-        LogAndThrow();
-        if (mLog)
-        {
-            mLog->Error("{}: [{}] Mutex init failed on '{}' with '{}'",
-                __func__, errorFunc, mName, strerror(rv));
-        }
+        ThrowSystemError(*mLog, mName, __func__, rv, errorFunc);
     }
     else
     {
         mValid = true;
         mRobust = (mMutexAttrs.robust == MutexRobust::Robust);
 
-        if (mLog)
-            mLog->Debug("{}: Mutex init succeeded on '{}'", __func__, mName);
+        mLog->Debug("{}: Mutex init succeeded on '{}'", __func__, mName);
     }
 }
 
@@ -85,18 +80,13 @@ void Mutex::LockFail(int rv)
         if (rvConsistent == 0)
         {
             rv = pthread_mutex_lock(&mMutex);
-            if (mLog)
-            {
-                mLog->Error("{}: [{}] Robust mutex EOWNERDEAD revived, but failed to lock with '{}'",
-                    __func__, mName, strerror(rv));
-            }
-            else
-            {
-                throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent");
-            }
+            if (rv != 0)
+                ThrowSystemError(*mLog, mName, __func__, rv, "Revived after EOWNERDEAD, but failed to re-lock");
         }
         else
         {
+            ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_consistent failure");
+            /*
             if (mLog)
             {
                 mLog->Error("{}: [{}] Robust mutex EOWNERDEAD attempt to revive failed with '{}'",
@@ -104,26 +94,22 @@ void Mutex::LockFail(int rv)
             }
             else
             {
-                throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent");
+                ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_consistent failure");
+                // throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent failure");
             }
+            */
         }
         return;
     }
     else
     {
-        if (mLog)
-            mLog->Error("{}: [{}] Lock failed with {}", __func__, mName, strerror(rv));
-        else
-            throw std::system_error(rv, std::system_category(), "pthread_mutex_lock");
+        ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_lock");
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void Mutex::UnlockFail(int rv)
 {
-    if (mLog)
-        mLog->Error("{}: [{}] Unlock failed with {}", __func__, mName, strerror(rv));
-    else
-        throw std::system_error(rv, std::system_category(), "pthread_mutex_unlock");
+    ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_unlock");
 }
 }

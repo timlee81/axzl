@@ -13,6 +13,11 @@
 
 namespace Axzl
 {
+class Log;
+/**
+ * Get default log
+ */
+std::shared_ptr<Log>& GetLog();
 
 /**
  * Pre-processor macros for logging
@@ -188,6 +193,8 @@ protected:
     }
 
     void ExpandLogMsg(Level, fmt::memory_buffer& msg);
+
+    //--
     // Print ["Level"]
     // Add Pid, Tid options
     // Add Clock source option

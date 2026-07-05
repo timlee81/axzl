@@ -5,12 +5,13 @@
 
 #include "Error.hpp"
 
+#include "Log.h"
+
 #include <algorithm>
 #include <optional>
 #include <stdexcept>
 #include <stdlib.h>
 #include <string>
-
 namespace Axzl
 {
 /**
@@ -80,8 +81,8 @@ UnrecoverableErrorPolicy ErrorPolicy()
     return axzlErrorPolicy;
 }
 
-//  Check a runtime environment var?
-void Axzl::Throw(std::exception exc)
+// void Throw(Error& err)
+void Throw(Log& log, const std::exception& exc)
 {
     // Based on policy
     switch (ErrorPolicy())
@@ -101,20 +102,11 @@ void Axzl::Throw(std::exception exc)
     }
 }
 
-void handleUnrecoverableError(std::string_view message)
+/*
+void Throw(const std::exception& exc)
 {
-    switch (getErrorPolicy())
-    {
-    case UnrecoverableErrorPolicy::Throw:
-        throw std::runtime_error(std::string(message));
-    case UnrecoverableErrorPolicy::Log:
-        std::fprintf(stderr, "mylib error: %s\n", message.data());
-        break;
-    case UnrecoverableErrorPolicy::Ignore:
-        break;
-    case UnrecoverableErrorPolicy::Terminate:
-        std::fprintf(stderr, "mylib fatal: %s\n", message.data());
-        std::terminate();
-    }
+    //Throw((log, exc);
 }
+*/
+
 }

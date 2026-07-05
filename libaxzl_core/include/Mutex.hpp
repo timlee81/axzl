@@ -90,16 +90,23 @@ public:
      * Simple constructor — takes just a name and uses defaults for log and attributes
      *
      * @param name Name of the mutex for debug
-     * @param log Logger
+     * @param log Logger Log to use for errors, or the default log.
      * @param attrs POSIX Mutex attributes
      */
     explicit Mutex(const char* name = "NotSmartMtx",
         std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
+        /* add me instead */
+        /*std::shared_ptr<Log> log = std::shared_ptr<Log> { GetLog() },*/
         const MutexAttributes& attrs = DefaultConfig)
     : mName(name)
     , mLog(log)
     , mMutexAttrs(attrs)
     {
+        if (!mLog)
+            // SAME AS ABOVE DEFAULT
+            //            mLog = std::make_shared<
+            // GET global logger here
+            ;
         Init();
     }
 
