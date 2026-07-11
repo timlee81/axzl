@@ -136,6 +136,11 @@ public:
     Mutex(const Mutex&) = delete;
     Mutex& operator=(const Mutex&) = delete;
 
+    /**
+     * Lock Mutex
+     *
+     * Robust mutex lock failure will attempt make the mutex consistent and try again.
+     */
     void Lock()
     {
         int rv = pthread_mutex_lock(&mMutex);
@@ -145,6 +150,9 @@ public:
     /** Lockable compliant */
     void lock() { Lock(); }
 
+    /**
+     * Unlock Mutex
+     */
     void Unlock()
     {
         int rv = pthread_mutex_unlock(&mMutex);

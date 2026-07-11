@@ -6,9 +6,11 @@
 
 #include "Likely.h"
 
+#include <array>
 #include <atomic>
 #include <fmt/format.h>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace Axzl
@@ -137,7 +139,8 @@ public:
     }
 
     /* No argument versions */
-
+    // Not sure these are really necessary... compiler will generate 0-arg versions
+    /*
     void Critical(const char* logMsg)
     {
         if (Unlikely(GetLevel() >= Level::Critical)) [[unlikely]]
@@ -173,33 +176,66 @@ public:
         if (Unlikely(GetLevel() >= Level::Trace)) [[unlikely]]
             ExpandLogMsg(Level::Trace, logMsg);
     }
-
+*/
 protected:
+    /**
+     * Make Header from expanded flags
+     *
+     * @return Header
+     */
+    std::string MakeHeader(Level level);
+
+    /**
+     * Push expanded entry to output
+     *      Takes over data
+     *
+     * @param hdr Header
+     * @param msg Expanded message
+     */
+    void PushEntry(std::string&& hdr, std::string&& msg);
+
+    /**
+     * Expand Log - templated
+     * Deep copy for thread bounce
+     *
+     * @param level Level
+     * @param logFmt Fmt string
+     * @param args Fmt string arguments
+     */
     template <typename... Args>
     void ExpandLogMsg(Level level, fmt::format_string<Args...>& logFmt, Args&&... args)
     {
-        auto msg = fmt::memory_buffer();
-        // fmt::format_to(std::back_inserter(msg), )
-        // Add '[level]' to begin
-        fmt::format_to(std::back_inserter(msg), logFmt, args...);
+        // Expand header
+        std::string hdr { MakeHeader(level) };
+        std::string msg { fmt::format(logFmt, args...) };
+        PushEntry(std::move(hdr), std::move(msg));
     }
 
-    void ExpandLogMsg(Level level, const char* logMsg)
+    /**
+     * Expand Log - non-templated
+     * Deep copy for thread bounce
+     *
+     * @param level Level
+     * @param logMsg Msg to expand
+     */
+    void ExpandLogMsg(Level level, std::string_view logMsg)
     {
-        auto msg = fmt::memory_buffer();
-        // fmt::format_to(std::back_inserter(msg), )
-        // Add '[level]' to begin
-        fmt::format_to(std::back_inserter(msg), logMsg);
+        std::string hdr { MakeHeader(level) };
+        std::string msg { logMsg };
+        PushEntry(std::move(hdr), std::move(msg));
     }
-
-    void ExpandLogMsg(Level, fmt::memory_buffer& msg);
-
-    //--
-    // Print ["Level"]
-    // Add Pid, Tid options
-    // Add Clock source option
 
 private:
+    /**
+     * Print Level
+     *
+     * @return Printed level
+     */
+    static constexpr std::string_view LevelToString(Level level) noexcept
+    {
+        return LEVEL_STRINGS[static_cast<size_t>(level)];
+    }
+
     /** Log name */
     std::string mName;
 
@@ -214,5 +250,16 @@ private:
 
     /** Print supplemental clock time as part of log entry */
     bool mExtraClock { false };
+
+    /** Level strings */
+    static constexpr std::array<const char*, 7> LEVEL_STRINGS {
+        "Trace", // LOG_DEBUG
+        "Debug", // LOG_DEBUG
+        "Info", // LOG_INFO
+        "Warn", // LOG_WARNING
+        "Error", // LOG_ERR
+        "Critical", // LOG_CRIT
+        "Off", // LOG_INFO
+    };
 };
 }
