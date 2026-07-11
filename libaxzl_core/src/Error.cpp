@@ -5,7 +5,7 @@
 
 #include "Error.hpp"
 
-#include "Log.h"
+#include "Log.hpp"
 
 #include <algorithm>
 #include <optional>

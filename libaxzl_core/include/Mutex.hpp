@@ -4,7 +4,8 @@
  */
 #pragma once
 
-#include "Log.h"
+#include "Log.hpp"
+#include "NoLog.hpp"
 
 #include <pthread.h>
 #include <string>
@@ -94,7 +95,7 @@ public:
      * @param attrs POSIX Mutex attributes
      */
     explicit Mutex(const char* name = "NotSmartMtx",
-        std::shared_ptr<Log> log = std::shared_ptr<Log> { nullptr },
+        std::shared_ptr<Log> log = std::shared_ptr<NoLog> { },
         /* add me instead */
         /*std::shared_ptr<Log> log = std::shared_ptr<Log> { GetLog() },*/
         const MutexAttributes& attrs = DefaultConfig)

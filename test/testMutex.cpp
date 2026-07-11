@@ -1,6 +1,8 @@
 #include "Mutex.hpp"
+#include "NoLog.hpp"
 
 #include <iostream>
+#include <memory>
 
 int main()
 {
@@ -18,5 +20,8 @@ int main()
     std::cout << "Lock released" << std::endl;
 
     std::cout << "All tests passed!" << std::endl;
+
+    auto log = std::make_shared<Axzl::NoLog>();
+    Axzl::Mutex testMutex2("testMutex2", log);
     return 0;
 }

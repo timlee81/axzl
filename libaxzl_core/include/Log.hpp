@@ -192,7 +192,7 @@ protected:
      * @param hdr Header
      * @param msg Expanded message
      */
-    void PushEntry(std::string&& hdr, std::string&& msg);
+    virtual void PushEntry(std::string&& hdr, std::string&& msg) = 0;
 
     /**
      * Expand Log - templated
@@ -205,6 +205,9 @@ protected:
     template <typename... Args>
     void ExpandLogMsg(Level level, fmt::format_string<Args...>& logFmt, Args&&... args)
     {
+        if (mSkipAllLogging)
+            return;
+
         // Expand header
         std::string hdr { MakeHeader(level) };
         std::string msg { fmt::format(logFmt, args...) };
@@ -220,10 +223,17 @@ protected:
      */
     void ExpandLogMsg(Level level, std::string_view logMsg)
     {
+        if (mSkipAllLogging)
+            return;
+
         std::string hdr { MakeHeader(level) };
         std::string msg { logMsg };
         PushEntry(std::move(hdr), std::move(msg));
     }
+
+protected:
+    /** Skip all logging if target is empty */
+    bool mSkipAllLogging { false };
 
 private:
     /**

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: BSD-2-Clause-Patent
  */
 
-#include "Log.h"
+#include "Log.hpp"
 
 #include <iostream>
 
@@ -24,11 +24,13 @@ std::string Log::MakeHeader(Level level)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+/*
 void Log::PushEntry(std::string&& hdr, std::string&& msg)
 {
     // Dump! ... just stdout now... enqueue eventually
     std::cout << hdr << "..." << msg << "\n";
 }
+*/
 
 // Must copy to be handled on other thread!
 
