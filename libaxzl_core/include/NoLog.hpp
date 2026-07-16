@@ -25,6 +25,8 @@ public:
         mSkipAllLogging = true;
     }
 
+    virtual ~NoLog() = default;
+
 private:
     /**
      * Push expanded entry to output

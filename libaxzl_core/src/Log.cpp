@@ -5,8 +5,6 @@
 
 #include "Log.hpp"
 
-#include <iostream>
-
 namespace Axzl
 {
 

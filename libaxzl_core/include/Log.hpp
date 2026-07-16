@@ -21,35 +21,57 @@ class Log;
  */
 std::shared_ptr<Log>& GetLog();
 
+// ADD - immediate stdout log (no queue), queue stdout, queue systemd
+
+// CHNAGE THESE to expected monadic uses!!!
+
 /**
  * Pre-processor macros for logging
  *
  * These are primarily useful in performance critical code as normal
  * method calls will expand arguments, which may be runtime expensive.
  */
-#define AxzlTrace(inst, ...)                                           \
-    if (Unlikely(inst.Level() >= Axzl::Log::Level::Trace) [[unlikely]] \
-        inst.Trace(...)
+#define AxzlTrace(inst, ...)                                               \
+    do                                                                     \
+    {                                                                      \
+        if (Unlikely(inst.Level() >= Axzl::Log::Level::Trace) [[unlikely]] \
+            inst.Trace(__VA_ARGS__);                                       \
+    } while (0)
 
-#define AxzlDebug(inst, ...)                                           \
-    if (Unlikely(inst.Level() >= Axzl::Log::Level::Debug) [[unlikely]] \
-        inst.Debug(...)
+#define AxzlDebug(inst, ...)                                               \
+    do                                                                     \
+    {                                                                      \
+        if (Unlikely(inst.Level() >= Axzl::Log::Level::Debug) [[unlikely]] \
+            inst.Debug(__VA_ARGS__);                                       \
+    } while (0)
 
-#define AxzlInfo(inst, ...)                                           \
-    if (Unlikely(inst.Level() >= Axzl::Log::Level::Info) [[unlikely]] \
-        inst.Info(...)
+#define AxzlInfo(inst, ...)                                               \
+    do                                                                    \
+    {                                                                     \
+        if (Unlikely(inst.Level() >= Axzl::Log::Level::Info) [[unlikely]] \
+            inst.Info(__VA_ARGS__);                                       \
+    } while (0)
 
-#define AxzlWarn(inst, ...)                                           \
-    if (Unlikely(inst.Level() >= Axzl::Log::Level::Warn) [[unlikely]] \
-        inst.Warn(...)
+#define AxzlWarn(inst, ...)                                               \
+    do                                                                    \
+    {                                                                     \
+        if (Unlikely(inst.Level() >= Axzl::Log::Level::Warn) [[unlikely]] \
+            inst.Warn(__VA_ARGS__);                                       \
+    } while (0)
 
-#define AxzlError(inst, ...)                                           \
-    if (Unlikely(inst.Level() >= Axzl::Log::Level::Error) [[unlikely]] \
-        inst.Error(...)
+#define AxzlError(inst, ...)                                               \
+    do                                                                     \
+    {                                                                      \
+        if (Unlikely(inst.Level() >= Axzl::Log::Level::Error) [[unlikely]] \
+            inst.Error(__VA_ARGS__);                                       \
+    } while (0)
 
-#define AxzlCritical(inst, ...)                                           \
-    if (Unlikely(inst.Level() >= Axzl::Log::Level::Critical) [[unlikely]] \
-        inst.Critical(...)
+#define AxzlCritical(inst, ...)                                               \
+    do                                                                        \
+    {                                                                         \
+        if (Unlikely(inst.Level() >= Axzl::Log::Level::Critical) [[unlikely]] \
+            inst.Critical(__VA_ARGS__);                                       \
+    } while (0)
 
 /**
  * Axzl Logging API
@@ -85,6 +107,8 @@ public:
     : mName(name)
     {
     }
+
+    virtual ~Log() = default;
 
     void SetLevel(Level level)
     {
