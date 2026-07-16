@@ -18,8 +18,8 @@ public:
     NoLog(NoLog& copy) = delete;
     NoLog(NoLog&& move) = delete;
 
-    NoLog(const char* name = nullptr)
-    : Log(name)
+    NoLog()
+    : Log("NoLog")
     {
         // Disable all logging in Log
         mSkipAllLogging = true;

@@ -1,12 +1,15 @@
 Logging
-- Async thread
+- Async thread per process space
+    - "AsyncSysDwithAllocator" object
 - Flush method
+- Allocator of string method; maybe even two? One for header, one for message?
+ -or just one that returns space for both?
 
 Threading / Scheduling
 
 Blocking Queue
 Debug API
-Debug Server
+Debug Server (take pid, tid)
 Debug Macro to avoid parameter expansion
 Exception vs. Logging
 State Machine infrastructure

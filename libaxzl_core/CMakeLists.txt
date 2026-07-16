@@ -2,6 +2,7 @@
 add_library(axzl_core
     src/Error.cpp
     src/Log.cpp
+    src/StdOutLog.cpp
     src/Mutex.cpp
 )
 

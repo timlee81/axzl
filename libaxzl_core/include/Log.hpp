@@ -23,8 +23,6 @@ std::shared_ptr<Log>& GetLog();
 
 // ADD - immediate stdout log (no queue), queue stdout, queue systemd
 
-// CHNAGE THESE to expected monadic uses!!!
-
 /**
  * Pre-processor macros for logging
  *
@@ -234,6 +232,9 @@ protected:
 
         // Expand header
         std::string hdr { MakeHeader(level) };
+        // TODO: change to format_to and allocate from lower
+        // likely need to make an allocator that can be plugged into each ouput log
+
         std::string msg { fmt::format(logFmt, args...) };
         PushEntry(std::move(hdr), std::move(msg));
     }
