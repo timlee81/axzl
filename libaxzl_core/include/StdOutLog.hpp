@@ -18,12 +18,23 @@ public:
     StdOutLog(StdOutLog& copy) = delete;
     StdOutLog(StdOutLog&& move) = delete;
 
+    /**
+     * Constructor
+     *
+     * @param name Name of logging component
+     */
     StdOutLog(const char* name)
     : Log(name)
     {
     }
 
+    /** Destructor */
     virtual ~StdOutLog() = default;
+
+    /**
+     * Wait until all log messages are pushed out
+     */
+    virtual void Drain() override;
 
 private:
     /**
@@ -35,4 +46,5 @@ private:
      */
     virtual void PushEntry(std::string&& hdr, std::string&& msg) override;
 };
+
 }

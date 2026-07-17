@@ -118,6 +118,13 @@ public:
         return mLevel.load(std::memory_order::memory_order_relaxed);
     }
 
+    /**
+     * Wait until all log messages are pushed out
+     */
+    virtual void Drain()
+    {
+    }
+
     template <typename... Args>
     void Critical(fmt::format_string<Args...> logFmt, Args&&... args)
     {

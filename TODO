@@ -8,7 +8,7 @@ Logging
 Threading / Scheduling
 
 Blocking Queue
-Debug API
+Debug API / "logger name service"
 Debug Server (take pid, tid)
 Debug Macro to avoid parameter expansion
 Exception vs. Logging
@@ -33,5 +33,6 @@ Super Sync Object
 
 IO non-blocking socket send and receive object
 
+Thread Pool
 
 UnitTest
