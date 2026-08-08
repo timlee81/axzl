@@ -16,38 +16,38 @@ namespace Axzl
 void Mutex::Init()
 {
     pthread_mutexattr_t pAttr;
-    int rv = pthread_mutexattr_init(&pAttr);
-    if (rv != 0)
-        ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutexattr_init");
+    int rc = pthread_mutexattr_init(&pAttr);
+    if (rc != 0)
+        ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutexattr_init");
 
     /* Immediate exec - Need to destroy pthread attr object if failure occurs */
-    const char* errorFunc = [this, &lrv = rv, &lpAttr = pAttr]() -> const char*
+    const char* errorFunc = [this, &lrc = rc, &lpAttr = pAttr]() -> const char*
     {
-        lrv = pthread_mutexattr_settype(&lpAttr, static_cast<int>(mMutexAttrs.type));
-        if (lrv != 0)
+        lrc = pthread_mutexattr_settype(&lpAttr, static_cast<int>(mMutexAttrs.type));
+        if (lrc != 0)
             return "pthread_mutexattr_settype";
 
-        lrv = pthread_mutexattr_setpshared(&lpAttr, static_cast<int>(mMutexAttrs.shared));
-        if (lrv != 0)
+        lrc = pthread_mutexattr_setpshared(&lpAttr, static_cast<int>(mMutexAttrs.shared));
+        if (lrc != 0)
             return "pthread_mutexattr_setpshared";
 
-        lrv = pthread_mutexattr_setrobust(&lpAttr, static_cast<int>(mMutexAttrs.robust));
-        if (lrv != 0)
+        lrc = pthread_mutexattr_setrobust(&lpAttr, static_cast<int>(mMutexAttrs.robust));
+        if (lrc != 0)
             return "pthread_mutexattr_setrobust";
 
-        lrv = pthread_mutexattr_setprotocol(&lpAttr, static_cast<int>(mMutexAttrs.proto));
-        if (lrv != 0)
+        lrc = pthread_mutexattr_setprotocol(&lpAttr, static_cast<int>(mMutexAttrs.proto));
+        if (lrc != 0)
             return "pthread_mutexattr_setprotocol";
 
         if (mMutexAttrs.proto == MutexProtocol::Protect)
         {
-            lrv = pthread_mutexattr_setprioceiling(&lpAttr, mMutexAttrs.priorityCeiling);
-            if (lrv != 0)
+            lrc = pthread_mutexattr_setprioceiling(&lpAttr, mMutexAttrs.priorityCeiling);
+            if (lrc != 0)
                 return "pthread_mutexattr_setprioceiling";
         }
 
-        lrv = pthread_mutex_init(&mMutex, &lpAttr);
-        if (lrv != 0)
+        lrc = pthread_mutex_init(&mMutex, &lpAttr);
+        if (lrc != 0)
             return "pthread_mutex_init";
 
         return nullptr;
@@ -55,9 +55,9 @@ void Mutex::Init()
     // Cleanup attribute
     pthread_mutexattr_destroy(&pAttr);
 
-    if (rv != 0)
+    if (rc != 0)
     {
-        ThrowSystemError(*mLog, mName, __func__, rv, errorFunc);
+        ThrowSystemError(mLog, mName, __func__, rc, errorFunc);
     }
     else
     {
@@ -69,33 +69,33 @@ void Mutex::Init()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void Mutex::LockFail(int rv)
+void Mutex::LockFail(int rc)
 {
-    if (rv == EOWNERDEAD && mRobust)
+    if (rc == EOWNERDEAD && mRobust)
     {
         // Previous owner died (EOWNERDEAD) — mutex is locked but marked inconsistent.
         // Repair is the caller's responsibility before the next Unlock();
         //  we make it consistent internally so the mutex remains usable.
-        int rvConsistent = pthread_mutex_consistent(&mMutex);
-        if (rvConsistent == 0)
+        int rcConsistent = pthread_mutex_consistent(&mMutex);
+        if (rcConsistent == 0)
         {
-            rv = pthread_mutex_lock(&mMutex);
-            if (rv != 0)
-                ThrowSystemError(*mLog, mName, __func__, rv, "Revived after EOWNERDEAD, but failed to re-lock");
+            rc = pthread_mutex_lock(&mMutex);
+            if (rc != 0)
+                ThrowSystemError(mLog, mName, __func__, rc, "Revived after EOWNERDEAD, but failed to re-lock");
         }
         else
         {
-            ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_consistent failure");
+            ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_consistent failure");
             /*
             if (mLog)
             {
                 mLog->Error("{}: [{}] Robust mutex EOWNERDEAD attempt to revive failed with '{}'",
-                    __func__, mName, strerror(rvConsistent));
+                    __func__, mName, strerror(rcConsistent));
             }
             else
             {
-                ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_consistent failure");
-                // throw std::system_error(rv, std::system_category(), "pthread_mutex_consistent failure");
+                ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_consistent failure");
+                // throw std::system_error(rc, std::system_category(), "pthread_mutex_consistent failure");
             }
             */
         }
@@ -103,13 +103,13 @@ void Mutex::LockFail(int rv)
     }
     else
     {
-        ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_lock");
+        ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_lock");
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void Mutex::UnlockFail(int rv)
+void Mutex::UnlockFail(int rc)
 {
-    ThrowSystemError(*mLog, mName, __func__, rv, "pthread_mutex_unlock");
+    ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_unlock");
 }
 }

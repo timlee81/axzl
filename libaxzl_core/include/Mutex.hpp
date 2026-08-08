@@ -144,9 +144,9 @@ public:
      */
     void Lock()
     {
-        int rv = pthread_mutex_lock(&mMutex);
-        if (rv != 0)
-            LockFail(rv);
+        int rc = pthread_mutex_lock(&mMutex);
+        if (rc != 0)
+            LockFail(rc);
     }
     /** Lockable compliant */
     void lock() { Lock(); }
@@ -156,9 +156,9 @@ public:
      */
     void Unlock()
     {
-        int rv = pthread_mutex_unlock(&mMutex);
-        if (rv != 0)
-            UnlockFail(rv);
+        int rc = pthread_mutex_unlock(&mMutex);
+        if (rc != 0)
+            UnlockFail(rc);
     }
     /** Lockable compliant */
     void unlock() { Unlock(); }
@@ -184,8 +184,8 @@ private:
     void Init();
 
     /** Long-form for failure cases */
-    void LockFail(int rv);
-    void UnlockFail(int rv);
+    void LockFail(int rc);
+    void UnlockFail(int rc);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////
 

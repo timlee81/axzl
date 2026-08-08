@@ -21,7 +21,7 @@ namespace Axzl
  */
 std::optional<UnrecoverableErrorPolicy> ErrorEnvPolicy()
 {
-    std::optional<UnrecoverableErrorPolicy> rv { std::nullopt };
+    std::optional<UnrecoverableErrorPolicy> rc { std::nullopt };
 
     // secure_getenv is better security vs old-school getenv
     static auto envPolicy { secure_getenv("AXZL_UNRECOVERABLE_ERROR_POLICY") };
@@ -34,16 +34,16 @@ std::optional<UnrecoverableErrorPolicy> ErrorEnvPolicy()
 
         // Default to ignore environment
         if (policy == "throw")
-            rv = UnrecoverableErrorPolicy::ThrowException;
+            rc = UnrecoverableErrorPolicy::ThrowException;
         else if (policy == "log")
-            rv = UnrecoverableErrorPolicy::LogException;
+            rc = UnrecoverableErrorPolicy::LogException;
         else if (policy == "ignore")
-            rv = UnrecoverableErrorPolicy::IgnoreException;
+            rc = UnrecoverableErrorPolicy::IgnoreException;
         else if (policy == "terminate")
-            rv = UnrecoverableErrorPolicy::Terminate;
+            rc = UnrecoverableErrorPolicy::Terminate;
         // else - ignored
     }
-    return rv;
+    return rc;
 }
 
 /**
