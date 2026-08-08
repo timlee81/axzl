@@ -2,8 +2,8 @@
  * SPDX-FileCopyrightText: 2026 Tim Lee, Axzl Project
  * SPDX-License-Identifier: BSD-2-Clause-Patent
  */
-#ifndef AXZL_LIBAXZL_CORE_INCLUDE_LIKELY_H
-#define AXZL_LIBAXZL_CORE_INCLUDE_LIKELY_H
+#ifndef AXZL_LIBAXZL_CORE_INCLUDE_LIKELY_HPP
+#define AXZL_LIBAXZL_CORE_INCLUDE_LIKELY_HPP
 
 /**
  * Branch prediction hints: expands Likely and Unlikely for common compilers
@@ -59,4 +59,4 @@
 #endif
 #endif
 
-#endif // AXZL_LIBAXZL_CORE_INCLUDE_LIKELY_H
+#endif // AXZL_LIBAXZL_CORE_INCLUDE_LIKELY_HPP

@@ -4,9 +4,11 @@
  */
 #pragma once
 
+#include "Log.hpp"
+#include "StringView.hpp"
+
 #include <exception>
 #include <fmt/format.h>
-#include <string_view>
 #include <system_error>
 
 namespace Axzl
@@ -36,7 +38,7 @@ void Throw(const std::exception& exc);
  * @param log Log to write to
  * @param exc Exception
  */
-void Throw(Log& log, const std::exception& exc);
+void Throw(LogPtr& log, const std::exception& exc);
 
 /**
  * Exception Occurred
@@ -44,15 +46,14 @@ void Throw(Log& log, const std::exception& exc);
  * @param log Log to write to
  * @param exc Exception
  */
-inline void ThrowSystemError(Log& log, std::string_view name, int rv, std::string_view what)
+inline void ThrowSystemError(LogPtr& log, string_view name, int rv, string_view what)
 {
     Throw(log, std::system_error(rv, std::system_category(), fmt::format("{}: {}", name, what)));
 }
 
 // __func__ version
-inline void ThrowSystemError(Log& log, std::string_view name, std::string_view where, int rv, std::string_view what)
+inline void ThrowSystemError(LogPtr& log, string_view name, string_view where, int rv, string_view what)
 {
-    // Throw(log, std::system_error(rv, st  d::system_category(), std::string { name } + "@" + where ": " + what));
     Throw(log, std::system_error(rv, std::system_category(), fmt::format("{}@{}: {}", name, where, what)));
 }
 

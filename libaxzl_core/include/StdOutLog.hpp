@@ -5,6 +5,9 @@
 #pragma once
 
 #include "Log.hpp"
+#include "StringView.hpp"
+
+#include <memory>
 
 namespace Axzl
 {
@@ -23,7 +26,7 @@ public:
      *
      * @param name Name of logging component
      */
-    StdOutLog(const char* name)
+    StdOutLog(string_view name)
     : Log(name)
     {
     }
@@ -47,4 +50,8 @@ private:
     virtual void PushEntry(std::string&& hdr, std::string&& msg) override;
 };
 
+static LogPtr MakeStdOutLog(string_view sv)
+{
+    return std::make_shared<StdOutLog>(sv);
+}
 }

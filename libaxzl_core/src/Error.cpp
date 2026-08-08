@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <string>
+
 namespace Axzl
 {
 /**
@@ -82,7 +83,7 @@ UnrecoverableErrorPolicy ErrorPolicy()
 }
 
 // void Throw(Error& err)
-void Throw(Log& log, const std::exception& exc)
+void Throw(LogPtr& log, const std::exception& exc)
 {
     // Based on policy
     switch (ErrorPolicy())

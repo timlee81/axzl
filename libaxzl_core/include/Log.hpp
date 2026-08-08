@@ -4,22 +4,27 @@
  */
 #pragma once
 
-#include "Likely.h"
+#include "Likely.hpp"
+#include "StringView.hpp"
 
 #include <array>
 #include <atomic>
 #include <fmt/format.h>
+#include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 namespace Axzl
 {
 class Log;
+using LogPtr = std::shared_ptr<Log>;
+
 /**
  * Get default log
+ *
+ * @return Default log
  */
-std::shared_ptr<Log>& GetLog();
+LogPtr GetLog();
 
 // ADD - immediate stdout log (no queue), queue stdout, queue systemd
 
@@ -101,7 +106,7 @@ public:
     Log(Log& copy) = delete;
     Log(Log&& move) = delete;
 
-    Log(const char* name)
+    Log(string_view name)
     : mName(name)
     {
     }
@@ -253,7 +258,7 @@ protected:
      * @param level Level
      * @param logMsg Msg to expand
      */
-    void ExpandLogMsg(Level level, std::string_view logMsg)
+    void ExpandLogMsg(Level level, string_view logMsg)
     {
         if (mSkipAllLogging)
             return;
@@ -273,7 +278,7 @@ private:
      *
      * @return Printed level
      */
-    static constexpr std::string_view LevelToString(Level level) noexcept
+    static constexpr string_view LevelToString(Level level) noexcept
     {
         return LEVEL_STRINGS[static_cast<size_t>(level)];
     }

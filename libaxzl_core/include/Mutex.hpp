@@ -5,7 +5,6 @@
 #pragma once
 
 #include "Log.hpp"
-#include "NoLog.hpp"
 
 #include <pthread.h>
 #include <string>
@@ -94,12 +93,10 @@ public:
      * @param log Logger Log to use for errors, or the default log.
      * @param attrs POSIX Mutex attributes
      */
-    explicit Mutex(const char* name = "NotSmartMtx",
-        std::shared_ptr<Log> log = std::shared_ptr<NoLog> { },
-        /* add me instead */
-        /*std::shared_ptr<Log> log = std::shared_ptr<Log> { GetLog() },*/
+    explicit Mutex(string_view name,
+        LogPtr log,
         const MutexAttributes& attrs = DefaultConfig)
-    : mName(name)
+    : mName(name.empty() ? "NotSmartMtx" : name)
     , mLog(log)
     , mMutexAttrs(attrs)
     {
@@ -196,7 +193,7 @@ private:
     MutexAttributes mMutexAttrs;
 
     /** Log interface */
-    std::shared_ptr<Log> mLog;
+    LogPtr mLog;
 
     /** Mutex */
     pthread_mutex_t mMutex { };

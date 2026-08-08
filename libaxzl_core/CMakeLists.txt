@@ -2,8 +2,10 @@
 add_library(axzl_core
     src/Error.cpp
     src/Log.cpp
+    src/LogManager.cpp
     src/StdOutLog.cpp
     src/Mutex.cpp
+    src/Thread.cpp
 )
 
 target_include_directories(axzl_core PUBLIC
