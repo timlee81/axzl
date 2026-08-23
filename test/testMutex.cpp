@@ -15,7 +15,7 @@ int main()
 {
     std::cout << "Testing libaxzl_core Mutex..." << std::endl;
 
-    Axzl::Thread t1 { "t1", Axzl::GetLog(), func };
+    // Axzl::Thread t1 { "t1", Axzl::GetLog(), Axzl::SchedFair, func };
 
     // Create a Mutex instance
     Axzl::Mutex testMutex("testMutex", Axzl::GetLog());
@@ -38,5 +38,12 @@ int main()
 
     auto log4 { Axzl::MakeStdOutLog("testMutex4") };
     Axzl::Mutex testMutex4("testMutex4", log4);
+
+    auto log5 { Axzl::MakeStdOutLog("testMutex5") };
+    Axzl::Mutex testMutex5("testMutex5", log5, Axzl::Mutex::Config { }.SetRecursive());
+
+    auto log6 { Axzl::MakeStdOutLog("testMutex6") };
+    auto testMutex6 = Axzl::Mutex::MakeRecursive("testMutex6", log6);
+
     return 0;
 }

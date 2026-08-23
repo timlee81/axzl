@@ -6,75 +6,13 @@
 
 #include "Log.hpp"
 
+#include <memory>
 #include <pthread.h>
 #include <string>
 #include <system_error>
 
 namespace Axzl
 {
-
-/**
- * Mutex Attribute values
- */
-
-enum class MutexType
-{
-    Normal = PTHREAD_MUTEX_NORMAL,
-    ErrorCheck = PTHREAD_MUTEX_ERRORCHECK,
-    Recursive = PTHREAD_MUTEX_RECURSIVE,
-    // Avoid this type - vague
-    Default = PTHREAD_MUTEX_DEFAULT,
-};
-
-enum class MutexShared
-{
-    Private = PTHREAD_PROCESS_PRIVATE,
-    Shared = PTHREAD_PROCESS_SHARED,
-};
-
-enum class MutexRobust
-{
-    Stalled = PTHREAD_MUTEX_STALLED,
-    Robust = PTHREAD_MUTEX_ROBUST,
-};
-
-enum class MutexProtocol
-{
-    None = PTHREAD_PRIO_NONE,
-    Inherit = PTHREAD_PRIO_INHERIT,
-    Protect = PTHREAD_PRIO_PROTECT,
-};
-
-/**
- * Attribute Object
- */
-struct MutexAttributes
-{
-    MutexType type = MutexType::Normal;
-    MutexShared shared = MutexShared::Private;
-    MutexRobust robust = MutexRobust::Stalled;
-    MutexProtocol proto = MutexProtocol::None;
-    int priorityCeiling = 0;
-};
-
-/**
- * Common Mutex Types
- */
-
-// Standard thread synchronization within a single process.
-inline constexpr MutexAttributes DefaultConfig { };
-
-// Allows a single thread to safely relock the same mutex recursively.
-inline constexpr MutexAttributes RecursiveConfig { MutexType::Recursive };
-
-// Safe debugging profile that returns an error code on deadlocks or improper unlocks.
-inline constexpr MutexAttributes ErrorCheckConfig { MutexType::ErrorCheck };
-
-// Inter-process communication profile (for use in shared memory).
-inline constexpr MutexAttributes SharedConfig { MutexType::Normal, MutexShared::Shared };
-
-// Inter-process communication that safely reports if a process crashes while holding the lock.
-inline constexpr MutexAttributes RobustSharedConfig { MutexType::Normal, MutexShared::Shared, MutexRobust::Robust };
 
 /**
  * Mutex type for real POSIX systems
@@ -87,6 +25,33 @@ class Mutex
 {
 public:
     /**
+     * Configuration
+     */
+    struct Config
+    {
+        int mType { PTHREAD_MUTEX_NORMAL };
+        int mShare { PTHREAD_PROCESS_PRIVATE };
+        bool mSharedMemDestroy { false };
+        int mRobust { PTHREAD_MUTEX_STALLED };
+        int mProto { PTHREAD_PRIO_NONE };
+        int mPrioCeiling { -1 };
+
+        Config& SetRecursive();
+        /** ROBUST and SHARED set, NO Destroy on destruction */
+        Config& SetSharedMem();
+        /** ROBUST and SHARED set, _Destroy_ on destruction */
+        Config& SetSharedMemDestroy();
+        /** This function is only for non shared ROBUST operation (not likely) */
+        Config& SetRobust();
+        /** If you want explicit PTHREAD_PRIO_PROTECT with ceiling, directly write to members  */
+        Config& SetPrioInherit();
+        /** Debug mode - can't be recursive at the same time */
+        Config& SetErrorCheck();
+    };
+
+    Mutex() = delete;
+
+    /**
      * Simple constructor — takes just a name and uses defaults for log and attributes
      *
      * @param name Name of the mutex for debug
@@ -95,44 +60,87 @@ public:
      */
     explicit Mutex(string_view name,
         LogPtr log,
-        const MutexAttributes& attrs = DefaultConfig)
+        const Config& cfg)
     : mName(name.empty() ? "NotSmartMtx" : name)
-    , mLog(log)
-    , mMutexAttrs(attrs)
+    , mLog(std::move(log))
     {
         if (!mLog)
-            // SAME AS ABOVE DEFAULT
-            //            mLog = std::make_shared<
-            // GET global logger here
-            ;
-        Init();
+            mLog = GetLog();
+
+        mMutex = new pthread_mutex_t;
+        Init(cfg);
+    }
+    /** Call Mutex() with no Config, work around gcc/clang bug */
+    explicit Mutex(string_view name, LogPtr log)
+    : Mutex(name, log, Config { })
+    {
+    }
+
+    /** Shared memory constructor */
+    explicit Mutex(string_view name,
+        LogPtr log,
+        void* mtx,
+        bool create,
+        const Config& cfg)
+    : mName(name.empty() ? "NotSmartMtx" : name)
+    , mLog(std::move(log))
+    {
+        if (!mLog)
+            mLog = GetLog();
+
+        mMutex = reinterpret_cast<pthread_mutex_t*>(mtx);
+        if (create)
+            Init(cfg);
+    }
+    /** Call Mutex() with no Config, work around gcc/clang bug */
+    explicit Mutex(string_view name, LogPtr log, void* mtx, bool create)
+    : Mutex(name, log, mtx, create, Config { }.SetSharedMem())
+    {
+    }
+
+    /** Short-hand factories */
+    static Mutex Make(string_view name, LogPtr log)
+    {
+        return Mutex(name, log);
+    }
+    static Mutex MakeRecursive(string_view name, LogPtr log)
+    {
+        return Mutex(name, log, Config { }.SetRecursive());
+    }
+    // Should be robust and process shared
+    static Mutex CreateShm(string_view name, LogPtr log, void* mtx, bool destroy = false)
+    {
+        return Mutex(name, log, mtx, true,
+            destroy ? Config { }.SetSharedMemDestroy() : Config { }.SetSharedMem());
+    }
+    static Mutex OpenShm(string_view name, LogPtr log, void* mtx, bool destroy = false)
+    {
+        return Mutex(name, log, mtx, false);
     }
 
     /** Move constructor  */
     Mutex(Mutex&& other) = delete;
-    /*
-    Mutex(Mutex&& other) noexcept
-    : mMutex(other.mMutex)
-    , mRobust(other.mRobust)
-    , mValid(other.mValid)
-    {
-        other.mValid = false;
-    }
-    */
-
     /** Move-assign omitted: would need to destroy an existing mutex first. */
     Mutex& operator=(Mutex&&) = delete;
+
+    /** Disable Copy and Assignment */
+    Mutex(const Mutex&) = delete;
+    Mutex& operator=(const Mutex&) = delete;
 
     /** Destructor */
     ~Mutex() noexcept
     {
         if (mValid)
-            pthread_mutex_destroy(&mMutex);
-    }
+        {
+            if (!mShared || (mShared && mSharedCleanup))
+                pthread_mutex_destroy(mMutex);
+        }
 
-    /** Disable Copy and Assignment */
-    Mutex(const Mutex&) = delete;
-    Mutex& operator=(const Mutex&) = delete;
+        if (!mShared && mMutex)
+            delete mMutex;
+
+        mMutex = nullptr;
+    }
 
     /**
      * Lock Mutex
@@ -141,7 +149,7 @@ public:
      */
     void Lock()
     {
-        int rc = pthread_mutex_lock(&mMutex);
+        int rc = pthread_mutex_lock(mMutex);
         if (rc != 0)
             LockFail(rc);
     }
@@ -153,7 +161,7 @@ public:
      */
     void Unlock()
     {
-        int rc = pthread_mutex_unlock(&mMutex);
+        int rc = pthread_mutex_unlock(mMutex);
         if (rc != 0)
             UnlockFail(rc);
     }
@@ -166,19 +174,19 @@ public:
      */
     bool TryLock() noexcept
     {
-        return pthread_mutex_trylock(&mMutex) == 0;
+        return pthread_mutex_trylock(mMutex) == 0;
     }
     /** Lockable compliant */
     void try_lock() { TryLock(); }
 
-    // pthread_mutex_t* Handle() noexcept { return &mMutex; }
-    // const pthread_mutex_t* Handle() const noexcept { return &mMutex; }
+    // pthread_mutex_t* Handle() noexcept { return mMutex; }
+    // const pthread_mutex_t* Handle() const noexcept { return mMutex; }
 
 private:
     /**
      * Initialize the mutex with attributes
      */
-    void Init();
+    void Init(const Config& cfg);
 
     /** Long-form for failure cases */
     void LockFail(int rc);
@@ -189,19 +197,20 @@ private:
     /** Mutex name */
     std::string mName;
 
-    /** Cached mutex attributes */
-    MutexAttributes mMutexAttrs;
-
     /** Log interface */
     LogPtr mLog;
 
     /** Mutex */
-    pthread_mutex_t mMutex { };
+    pthread_mutex_t* mMutex { nullptr };
 
     /** Valid flag */
     bool mValid { false };
 
     /** Robust flag */
     bool mRobust { false };
+
+    /** Shared flag */
+    bool mShared { false };
+    bool mSharedCleanup { false };
 };
 }
