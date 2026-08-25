@@ -115,6 +115,7 @@ void Mutex::LockFail(int rc)
     if (rc == EOWNERDEAD && mRobust)
     {
         // Previous owner died (EOWNERDEAD) — mutex is locked but marked inconsistent.
+        // Only one thread waiting on pthread_mutex_lock() is given EOWNERDEAD
         // Repair is the caller's responsibility before the next Unlock();
         //  we make it consistent internally so the mutex remains usable.
         int rcConsistent = pthread_mutex_consistent(mMutex);
