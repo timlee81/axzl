@@ -93,7 +93,7 @@ void Throw(LogPtr& log, const std::exception& exc)
         break;
     case UnrecoverableErrorPolicy::LogException:
         // Log
-        // TODO add logging feature
+        log->Critical("Exception! {}", exc.what());
         break;
     case UnrecoverableErrorPolicy::IgnoreException:
         break;

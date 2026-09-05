@@ -6,10 +6,13 @@
 
 #include "Log.hpp"
 
+#include <chrono>
 #include <memory>
 #include <pthread.h>
 #include <string>
 #include <system_error>
+#include <time.h>
+#include <type_traits>
 
 namespace Axzl
 {
@@ -181,6 +184,61 @@ public:
 
     // pthread_mutex_t* Handle() noexcept { return mMutex; }
     // const pthread_mutex_t* Handle() const noexcept { return mMutex; }
+
+    // pthread_mutex_clocklock to change basis
+    // duration
+    template <typename Rep, typename Period>
+    bool TryLockFor(const std::chrono::duration<Rep, Period>& duration)
+    {
+        //  Convert to TryLockUntil
+        auto timeout = std::chrono::steady_clock::now() + duration;
+        return TryLockUntil(timeout);
+    }
+
+    // time_point
+    template <typename Clock, typename Duration>
+    bool TryLockUntil(const std::chrono::time_point<Clock, Duration>& timeoutTp)
+    {
+        using namespace std::chrono;
+
+        clockid_t clkId = CLOCK_MONOTONIC;
+        if constexpr (std::is_same_v<Clock, steady_clock>)
+        {
+            // Default CLOCK_MONOTONIC
+        }
+        else if constexpr (std::is_same_v<Clock, system_clock>)
+        {
+            clkId = CLOCK_REALTIME;
+        }
+        else
+        {
+            ThrowSystemError(mLog, mName, __func__, EINVAL, "pthread mutex clockid_t failure");
+        }
+
+        // Convert timeout to posix abs time
+        auto toDurNs = duration_cast<nanoseconds>(timeoutTp.time_since_epoch());
+        auto secs = duration_cast<seconds>(toDurNs);
+        auto nsecs = toDurNs - secs;
+        // Handle negative ns case (can't be negative)
+        if (nsecs.count() < 0)
+        {
+            secs -= seconds(1);
+            nsecs += seconds(1);
+        }
+        timespec ts;
+        ts.tv_sec = static_cast<time_t>(secs.count());
+        ts.tv_nsec = static_cast<long>(nsecs.count());
+
+        // Wait on the requested clock
+        int rc = pthread_mutex_clocklock(mMutex, clkId, &ts);
+        bool locked = false; // rc == ETIMEDOUT is false
+        if (rc == 0)
+            locked = true;
+        else if (rc != ETIMEDOUT)
+            LockFail(rc);
+
+        return locked;
+    }
 
 private:
     /**

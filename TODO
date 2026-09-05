@@ -35,4 +35,58 @@ IO non-blocking socket send and receive object
 
 Thread Pool
 
+SANE signal handling:
+    // Block all async signals and funnel to a single thread
+    // Sync signals (segv) shouldn't ever be blocked
+    void* signal_handler_thread(void* arg) {
+        sigset_t* mask = (sigset_t*)arg;
+        int sig;
+
+        printf("Signal handling thread started...\n");
+
+        while (1) {
+            // This blocks until one of the signals in 'mask' is generated
+//            sigwait(mask, &sig);
+Use sigwaitinfo instead or sigtimedwait
+signalfd() linux call can also be used in poll/epoll loop!
+            // 🔥 THE BIG ADVANTAGE:
+            // You are now in a normal thread context, NOT a restrictive signal handler.
+            // You can safely use printf, malloc, locks, or condition variables here!
+            switch (sig) {
+                case SIGINT:
+                    printf("\nReceived SIGINT (Ctrl+C) cleanly in dedicated thread!\n");
+                    break;
+                case SIGTERM:
+                    printf("Received SIGTERM. Cleaning up application...\n");
+                    pthread_exit(NULL);
+            }
+        }
+        return NULL;
+    }
+    int main() {
+        sigset_t mask;
+        
+        // Explicitly add ONLY the lifecycle/configuration signals you want to intercept
+        sigemptyset(&mask);
+    DO NOT add sync signals to this!!
+        sigaddset(&mask, SIGINT);   // Terminal interrupt (Ctrl+C)
+        sigaddset(&mask, SIGTERM);  // Friendly termination request (e.g., systemctl stop)
+        sigaddset(&mask, SIGHUP);   // Hangup (often hijacked for config reloading)
+        sigaddset(&mask, SIGQUIT);  // Quit from keyboard
+
+        // Block them here. main() and all future threads inherit this block mask.
+    This part is critical - a signal sent to a process, Linux will look for the only
+    thread with the signal unblocked (sigwait() waiting thread unblocks prior to call)
+        pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
+        // 1. Now spin up your dedicated signal-handling thread, passing the mask
+        pthread_t sig_thread;
+        pthread_create(&sig_thread, NULL, signal_worker, &mask);
+
+        // 2. Spin up your processing worker threads safely
+        // (They inherit the mask, meaning they will never be interrupted by SIGINT/SIGTERM)
+
+        // ... 
+    }
+
 UnitTest

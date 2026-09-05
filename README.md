@@ -71,4 +71,7 @@ Exceptions are often disabled in codebases (-fno-exceptions).
 Axzl can be compiled with exceptions disabled; in this case, errors are logged and
 no exceptions are thrown.
 
+## Signals
+
+In general, EINTR is treated as an error. Async signals should be blocked in main() and a thread created to wait in sigwait(). There will likely be an added pattern for this.
 
