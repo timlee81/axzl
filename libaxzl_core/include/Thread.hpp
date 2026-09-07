@@ -4,12 +4,16 @@
  */
 #pragma once
 
+#include "Error.hpp"
 #include "Log.hpp"
+#include "Scheduler.hpp"
 #include "StringView.hpp"
 
 #include <functional>
 #include <memory>
+#include <pthread.h>
 #include <string>
+#include <sys/resource.h>
 #include <tuple>
 #include <utility>
 
@@ -33,37 +37,53 @@ public:
     explicit Thread(string_view name,
         LogPtr log,
         /* Thread Parameters */
-        /* priority, RR|FIFO*/
+        const SchedulerParams& sched,
         Func&& func, Args&&... args)
     : mName(name.empty() ? "NotSmartThread" : name)
     , mLog(log ? log : GetLog())
+    , mSchedParams(sched)
     {
-        /*
+        /// todo
+        // Validate scheduler
+        // static_assert...
+
+        /**
          * Bundle the callable and arguments into a tuple. Decay ensures we copy values
          *  rather than storing dangling refs to variables on the caller's stack.
          * Heap because it must outlive this call; the new thread may start running
          *  well after the constructor returns.
          */
         using CallData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
-        auto callData = std::make_unique<CallData>(
-            CallData(std::forward<Func>(func), std::forward<Args>(args)...));
+        auto ctx = std::make_unique<Context<CallData>>(
+            this, CallData(std::forward<Func>(func), std::forward<Args>(args)...));
 
-        // Call pthread init here
-        // PthreadInit();
+        // Get attributes
+        auto attr = CreateAttributes();
 
-        // pthread_t thread_id;
-        int rc = pthread_create(&mTid, nullptr, &Thread::ThreadEntry<CallData>, callData.get());
+        // Start thread
+        int rc = pthread_create(&mTid, attr.get(), &Thread::ThreadEntry<CallData>, ctx.get());
         if (rc != 0)
         {
-            // Throw()
-            throw std::runtime_error("pthread_create failed");
+            // Throw
+            ThrowSystemError(mLog, mName, __func__, rc, "pthread_create");
         }
-
-        /* New thread created, release callData to thread */
-        callData.release();
-        mJoin = true;
-        mLog->Trace("{}:{} thread ctor", __func__, mName);
+        else
+        {
+            /* New thread created, release callData to thread */
+            ctx.release();
+            mJoin = true;
+            mLog->Trace("{}:{} thread ctor", __func__, mName);
+        }
     }
+#if 0
+    template <typename Func, typename... Args>
+    explicit Thread(string_view name,
+        LogPtr log,
+        Func&& func, Args&&... args)
+    : Thread(log, {}, std::forward<Func>(func), std::forward<Args>(args)...)
+    {
+    }
+#endif
 
     /** Join thread - block waiting for join to complete */
     void Join()
@@ -74,7 +94,7 @@ public:
             mLog->Debug("{}:{} begin join...", __func__, mName);
             void* threadRet;
             int rc = pthread_join(mTid, &threadRet);
-            if (rc < 0)
+            if (rc != 0)
                 mLog->Error("{}:{} join error '{}'", __func__, mName, strerror(rc));
             else
                 mLog->Debug("{}:{} joined", __func__, mName);
@@ -87,7 +107,9 @@ public:
     ~Thread()
     {
         Join();
-        mLog->Trace("{}:{} thread dtor", __func__, mName);
+        // mLog may have been moved, test
+        if (mLog)
+            mLog->Trace("{}:{} thread dtor", __func__, mName);
     }
 
     /** Not copyable */
@@ -97,9 +119,10 @@ public:
     /** Moving is supported, pthread_t can be copied but not compared without pthread_equal */
     Thread(Thread&& from)
     : mName(std::move(from.mName))
-    , mTid(from.mTid)
     , mLog(from.mLog)
     , mJoin(from.mJoin)
+    , mTid(from.mTid)
+    , mSchedParams(from.mSchedParams)
     {
         /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
         from.mJoin = false;
@@ -111,9 +134,10 @@ public:
         if (this != &from)
         {
             mName = std::move(from.mName);
-            mTid = from.mTid;
             mLog = from.mLog;
             mJoin = from.mJoin;
+            mTid = from.mTid;
+            mSchedParams = from.mSchedParams;
             /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
             from.mJoin = false;
             from.mLog = nullptr;
@@ -122,13 +146,78 @@ public:
     }
 
 private:
+    struct AttributeDestroyer
+    {
+        void operator()(pthread_attr_t* attr) const
+        {
+            pthread_attr_destroy(attr);
+            delete attr;
+        }
+    };
+    using Attributes = std::unique_ptr<pthread_attr_t, AttributeDestroyer>;
+
+    Attributes CreateAttributes()
+    {
+        auto attr = Attributes(new pthread_attr_t);
+
+        int rc = pthread_attr_init(attr.get());
+        if (rc != 0)
+            ThrowSystemError(mLog, mName, __func__, rc, "pthread_attr_init");
+
+        return attr;
+    }
+
+    /**
+     * Setup thread after ThreadEntry
+     */
+    void PostThreadEntryInit()
+    {
+        // can you only set nice after thread create?
+
+        /** If non-realtime, set nice value */
+        if (mSchedParams.policy != SchedulerParams::Policy::RealtimeFifo
+            && mSchedParams.policy != SchedulerParams::Policy::RealtimeRoundRobin
+            && mSchedParams.policy != SchedulerParams::Policy::RealtimeDeadline)
+        {
+            // setpriority(PRIO_PROCESS, 0, This->mSchedParams.prio);
+        }
+
+        // nice value??
+
+        // Set thread name, remember Linux only uses 15 characters
+        constexpr std::size_t MAX_THREADNAME_CHARS = 15;
+        pthread_setname_np(pthread_self(),
+            mName.substr(MAX_THREADNAME_CHARS).c_str());
+    }
+
+    /**
+     * Context to pass to thread
+     */
+    template <typename CallData>
+    struct Context
+    {
+        Thread* This;
+        CallData callData;
+
+        Context(Thread* t, CallData c)
+        : This(t)
+        , callData(std::move(c))
+        {
+        }
+    };
     /**
      * Thread Entry point - to avoid type-erasure, use a (small) template
      */
     template <typename CallData>
     static void* ThreadEntry(void* arg)
     {
-        std::unique_ptr<CallData> callData(static_cast<CallData*>(arg));
+        /* Grab This, function and arguments */
+        std::unique_ptr<Context<CallData>> ctx(static_cast<Context<CallData>*>(arg));
+        Thread* This = ctx->This;
+
+        // Setup thread
+        This->PostThreadEntryInit();
+
         /* apply calls the lambda with the tuple args unpacked */
         std::apply(
             [](auto&&... unpacked)
@@ -138,7 +227,7 @@ private:
                     be [](auto&& f, auto&&... unpacked) { f((unpacked...));} */
                 std::invoke(std::forward<decltype(unpacked)>(unpacked)...);
             },
-            std::move(*callData));
+            std::move(ctx->callData));
         return nullptr;
     }
 
@@ -153,55 +242,8 @@ private:
 
     /** Thread ID */
     pthread_t mTid;
+
+    /** Scheduler data */
+    SchedulerParams mSchedParams;
 };
 }
-
-#if 0
-
-
-
-    // Not copyable -- a pthread_t identifies a single OS thread.
-    Thread(const Thread&) = delete;
-    Thread& operator=(const Thread&) = delete;
-
-    // Movable.
-    Thread(Thread&& other) noexcept
-        : thread_id_(other.thread_id_), joinable_(other.joinable_) {
-        other.joinable_ = false;
-    }
-
-    Thread& operator=(Thread&& other) noexcept {
-        if (this != &other) {
-            if (joinable_) {
-                pthread_join(thread_id_, nullptr);
-            }
-            thread_id_ = other.thread_id_;
-            joinable_ = other.joinable_;
-            other.joinable_ = false;
-        }
-        return *this;
-    }
-
-    ~Thread() {
-        // Mirrors std::thread's "must be joined or detached" contract
-        // by joining automatically rather than calling std::terminate.
-        if (joinable_) {
-            pthread_join(thread_id_, nullptr);
-        }
-    }
-
-    void join() {
-        if (!joinable_) {
-            throw std::runtime_error("Thread is not joinable");
-        }
-        int rc = pthread_join(thread_id_, nullptr);
-        if (rc != 0) {
-            throw std::runtime_error("pthread_join failed with code " +
-                                      std::to_string(rc));
-        }
-        joinable_ = false;
-    }
-
-    bool joinable() const noexcept { return joinable_; }
-
-#endif
