@@ -120,7 +120,21 @@ Thread::Attributes::Attributes(string_view name, LogPtr log, const Config& cfg)
     if (cfg.mSched)
     {
         // Validate settings
-        //        static_assert()
+        if (cfg.mSched->IsRt())
+        {
+            // Validate RT prio
+            int pmax = sched_get_priority_max(SCHED_RR);
+            int pmin = sched_get_priority_min(SCHED_RR);
+            if (cfg.mSched->prio > pmax || cfg.mSched->prio < pmin)
+                ThrowSystemError(name, log, __func__, EINVAL, "RT priority out of range");
+        }
+        else
+        {
+            constexpr int LINUX_MIN_NICE = -20;
+            constexpr int LINUX_MAX_NICE = 19;
+            if (cfg.mSched->prio < LINUX_MIN_NICE || cfg.mSched->prio > LINUX_MAX_NICE)
+                ThrowSystemError(name, log, __func__, EINVAL, "Nice out of range");
+        }
 
         //  This is required to deviate from parent scheduling parameters
         int rc = pthread_attr_setinheritsched(&mAttr.attr, PTHREAD_EXPLICIT_SCHED);
@@ -167,6 +181,9 @@ Thread::Attributes::Attributes(string_view name, LogPtr log, const Config& cfg)
 
     if (cfg.mStackSize)
     {
+        if (*cfg.mStackSize < PTHREAD_STACK_MIN)
+            ThrowSystemError(name, log, __func__, ENOMEM, "mStackSize");
+
         int rc = pthread_attr_setstacksize(&mAttr.attr, cfg.mStackSize.value());
         if (rc != 0)
             ThrowSystemError(name, log, __func__, rc, "pthread_attr_setstack");
@@ -185,6 +202,37 @@ Thread::Attributes::Attributes(string_view name, LogPtr log, const Config& cfg)
         if (rc != 0)
             ThrowSystemError(name, log, __func__, rc, "pthread_attr_setaffinity_np");
     }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Thread(Thread&& from)
+: mName(std::move(from.mName))
+, mLog(from.mLog)
+, mJoin(from.mJoin)
+, mTid(from.mTid)
+{
+    /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
+    from.mJoin = false;
+    from.mLog = nullptr;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread& Thread::operator=(Thread&& from)
+{
+    if (this != &from)
+    {
+        if (mJoin)
+            Join();
+
+        mName = std::move(from.mName);
+        mLog = from.mLog;
+        mJoin = from.mJoin;
+        mTid = from.mTid;
+        /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
+        from.mJoin = false;
+        from.mLog = nullptr;
+    }
+    return *this;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -219,14 +267,13 @@ void Thread::PostThreadEntryInit()
     // Set thread name, remember Linux only uses 15 characters
     constexpr std::size_t MAX_THREADNAME_CHARS = 15;
     pthread_setname_np(pthread_self(),
-        mName.substr(MAX_THREADNAME_CHARS).c_str());
+        mName.substr(0, MAX_THREADNAME_CHARS).c_str());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void Thread::UpdatePriority(int prio)
 {
-    // Don't use mSched... just ask OS
-    // if (mSched)
+    // Don't reference mSched... just ask OS
 
     // Get scheduler policy
     int policy;
@@ -248,6 +295,22 @@ void Thread::UpdatePriority(int prio)
         int rc = setpriority(PRIO_PROCESS, 0, prio);
         if (rc != 0)
             ThrowSystemError(mName, mLog, __func__, rc, "setpriority");
+    }
+    // Update mSched just in-case
+    if (mSched)
+        mSched->prio = prio;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void Thread::Detach()
+{
+    if (mJoin)
+    {
+        int rc = pthread_detach(mTid);
+        if (rc != 0)
+            ThrowSystemError(mName, mLog, __func__, rc, "pthread_detach");
+
+        mJoin = false;
     }
 }
 

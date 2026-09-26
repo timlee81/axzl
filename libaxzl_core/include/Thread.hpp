@@ -155,31 +155,8 @@ public:
     Thread& operator=(Thread& assign) = delete;
 
     /** Moving is supported, pthread_t can be copied but not compared without pthread_equal */
-    Thread(Thread&& from)
-    : mName(std::move(from.mName))
-    , mLog(from.mLog)
-    , mJoin(from.mJoin)
-    , mTid(from.mTid)
-    {
-        /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
-        from.mJoin = false;
-        from.mLog = nullptr;
-    }
-
-    Thread& operator=(Thread&& from)
-    {
-        if (this != &from)
-        {
-            mName = std::move(from.mName);
-            mLog = from.mLog;
-            mJoin = from.mJoin;
-            mTid = from.mTid;
-            /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
-            from.mJoin = false;
-            from.mLog = nullptr;
-        }
-        return *this;
-    }
+    Thread(Thread&& from);
+    Thread& operator=(Thread&& from);
 
     /** Join thread - block waiting for join to complete */
     void Join();
@@ -198,6 +175,11 @@ public:
      * @prio RT Prio or nice value to set
      */
     void UpdatePriority(int prio);
+
+    /**
+     * Detach the thread
+     */
+    void Detach();
 
 private:
     /**
