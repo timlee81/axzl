@@ -66,7 +66,7 @@ public:
         Config& SetDetached(bool detached);
         Config& SetStackSize(std::size_t size);
         Config& SetAffinity(cpu_set_t cores);
-        Config& SetAffinity(std::initializer_list<unsigned int>& cores);
+        Config& SetAffinity(const std::initializer_list<unsigned int>& cores);
     };
 
     /**

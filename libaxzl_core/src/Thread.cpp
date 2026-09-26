@@ -75,7 +75,7 @@ Thread::Config& Thread::Config::SetAffinity(cpu_set_t cores)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-Thread::Config& Thread::Config::SetAffinity(std::initializer_list<unsigned int>& cores)
+Thread::Config& Thread::Config::SetAffinity(const std::initializer_list<unsigned int>& cores)
 {
     cpu_set_t cset = { };
     for (auto& c : cores)
