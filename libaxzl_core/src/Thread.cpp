@@ -9,49 +9,246 @@
 
 namespace Axzl
 {
-#if 0
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void Thread::Init()
+Thread::Config& Thread::Config::SetScheduler(const SchedulerParams& params)
 {
-    pthread_attr_t pAttr;
-    int rc = pthread_mutexattr_init(&pAttr);
+    mSched = params;
+    return *this;
+}
+
+/*
+These individual scheduler options are probably undesirable
+If you're going to set one... set both
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetSchedulerPolicy(SchedulerParams::Policy policy)
+{
+    // Or these individual Scheduler options
+    if (!mSched)
+        mSched = SchedulerParams { };
+
+    mSched->policy = policy;
+    return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetSchedulerPriority(int prio)
+{
+    if (!mSched)
+        mSched = SchedulerParams { };
+
+    mSched->prio = prio;
+    return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetSchedulerNice(int nice)
+{
+    if (!mSched)
+        mSched = SchedulerParams { };
+
+    mSched->prio = nice;
+    return *this;
+}
+*/
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetDetached(bool detached)
+{
+    mDetach = detached;
+    return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetStackSize(std::size_t size)
+{
+    mStackSize = size;
+    return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetAffinity(cpu_set_t cores)
+{
+    mCpuCores = cores;
+    return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Config& Thread::Config::SetAffinity(std::initializer_list<unsigned int>& cores)
+{
+    cpu_set_t cset = { };
+    for (auto& c : cores)
+        CPU_SET(c, &cset);
+    mCpuCores = cset;
+    return *this;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::ScopedPosixAttr::ScopedPosixAttr(string_view name, LogPtr log)
+{
+    int rc = pthread_attr_init(&attr);
     if (rc != 0)
-        ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutexattr_init");
+        ThrowSystemError(name, log, __func__, rc, "pthread_attr_init failure");
+}
 
-    /* Immediate exec - Need to destroy pthread attr object if failure occurs */
-    const char* errorFunc = [this, &lrc = rc, &lpAttr = pAttr, &lcfg = cfg]() -> const char*
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::ScopedPosixAttr::~ScopedPosixAttr()
+{
+    (void)pthread_attr_destroy(&attr);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Thread::Attributes::Attributes(string_view name, LogPtr log, const Config& cfg)
+: mAttr(name, log)
+{
+    // Either pull attributes from current thread OR use system defaults
+    // Will override individual settings if specified by user
+    if (cfg.mInherit)
     {
-        lrc = pthread_mutexattr_settype(&lpAttr, static_cast<int>(lcfg.mType));
-        if (lrc != 0)
-            return "pthread_mutexattr_settype";
-
-        lrc = pthread_mutexattr_setpshared(&lpAttr, static_cast<int>(lcfg.mShare));
-        if (lrc != 0)
-            return "pthread_mutexattr_setpshared";
-
-        lrc = pthread_mutex_init(mMutex, &lpAttr);
-        if (lrc != 0)
-            return "pthread_mutex_init";
-
-        return nullptr;
-    }();
-    // Cleanup attribute
-    pthread_attr_destroy(&pAttr);
-
-    if (rc != 0)
-    {
-        ThrowSystemError(mLog, mName, __func__, rc, errorFunc);
+        int rc = pthread_getattr_np(pthread_self(), &mAttr.attr);
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_getattr_np");
     }
     else
     {
-        mValid = true;
-        mRobust = (cfg.mRobust == PTHREAD_MUTEX_ROBUST);
-        mShared = (cfg.mShare == PTHREAD_PROCESS_SHARED);
-        mSharedCleanup = cfg.mSharedMemDestroy;
+        int rc = pthread_getattr_default_np(&mAttr.attr);
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_getattr_default_np");
+    }
 
-        mLog->Debug("{}: Mutex init succeeded on '{}'", __func__, mName);
+    if (cfg.mSched)
+    {
+        // Validate settings
+        //        static_assert()
+
+        //  This is required to deviate from parent scheduling parameters
+        int rc = pthread_attr_setinheritsched(&mAttr.attr, PTHREAD_EXPLICIT_SCHED);
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_attr_setinheritsched");
+
+        // Get scheduler policy
+        // int policy;
+        // rc = pthread_attr_getschedpolicy(&mAttr.attr, &policy);
+        // if (rc != 0)
+        //    ThrowSystemError(name, log, __func__, rc, "pthread_attr_getschedpolicy");
+
+        // if (cfg.mSched->policy)
+        //{
+        // rc = pthread_attr_setschedpolicy(&mAttr.attr, static_cast<int>(*cfg.mSched->policy));
+        // if (rc != 0)
+        //     ThrowSystemError(name, log, __func__, rc, "pthread_attr_setschedpolicy");
+        //}
+        rc = pthread_attr_setschedpolicy(&mAttr.attr, static_cast<int>(cfg.mSched->policy));
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_attr_setschedpolicy");
+
+        // If RT, set prio.
+        if (cfg.mSched->IsRt())
+        {
+            sched_param sp;
+            sp.sched_priority = static_cast<int>(cfg.mSched->prio);
+
+            rc = pthread_attr_setschedparam(&mAttr.attr, &sp);
+            if (rc != 0)
+                ThrowSystemError(name, log, __func__, rc, "pthread_attr_setschedparam");
+        }
+
+        // If SCHED_OTHER, set nice after thread has started
+    }
+
+    if (cfg.mDetach)
+    {
+        int detach = cfg.mDetach.value() ? PTHREAD_CREATE_DETACHED : PTHREAD_CREATE_JOINABLE;
+        int rc = pthread_attr_setdetachstate(&mAttr.attr, detach);
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_attr_setdetachstate");
+    }
+
+    if (cfg.mStackSize)
+    {
+        int rc = pthread_attr_setstacksize(&mAttr.attr, cfg.mStackSize.value());
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_attr_setstack");
+    }
+
+    if (cfg.mGuardSize)
+    {
+        int rc = pthread_attr_setguardsize(&mAttr.attr, cfg.mGuardSize.value());
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_attr_setguardsize");
+    }
+
+    if (cfg.mCpuCores)
+    {
+        int rc = pthread_attr_setaffinity_np(&mAttr.attr, sizeof(cpu_set_t), &cfg.mCpuCores.value());
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_attr_setaffinity_np");
     }
 }
-#endif
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void Thread::Join()
+{
+    if (mJoin)
+    {
+        // Do join
+        mLog->Debug("{}:{} begin join...", __func__, mName);
+        void* threadRet;
+        int rc = pthread_join(mTid, &threadRet);
+        if (rc != 0)
+            mLog->Error("{}:{} join error '{}'", __func__, mName, strerror(rc));
+        else
+            mLog->Debug("{}:{} joined", __func__, mName);
+
+        mJoin = false;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void Thread::PostThreadEntryInit()
+{
+    // If non-realtime, set nice value
+    if (mSched && !mSched->IsRt())
+    {
+        int rc = setpriority(PRIO_PROCESS, 0, mSched->prio);
+        if (rc != 0)
+            ThrowSystemError(mName, mLog, __func__, rc, "setpriority");
+    }
+
+    // Set thread name, remember Linux only uses 15 characters
+    constexpr std::size_t MAX_THREADNAME_CHARS = 15;
+    pthread_setname_np(pthread_self(),
+        mName.substr(MAX_THREADNAME_CHARS).c_str());
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void Thread::UpdatePriority(int prio)
+{
+    // Don't use mSched... just ask OS
+    // if (mSched)
+
+    // Get scheduler policy
+    int policy;
+    struct sched_param sp;
+    int rc = pthread_getschedparam(mTid, &policy, &sp);
+    if (rc != 0)
+        ThrowSystemError(mName, mLog, __func__, rc, "pthread_getschedparam");
+
+    // If RT, update via
+    SchedulerParams sps { static_cast<SchedulerParams::Policy>(policy), sp.sched_priority };
+    if (sps.IsRt())
+    {
+        rc = pthread_setschedprio(mTid, prio);
+        if (rc != 0)
+            ThrowSystemError(mName, mLog, __func__, rc, "pthread_setschedprio");
+    }
+    else
+    {
+        int rc = setpriority(PRIO_PROCESS, 0, prio);
+        if (rc != 0)
+            ThrowSystemError(mName, mLog, __func__, rc, "setpriority");
+    }
+}
 
 }

@@ -36,12 +36,12 @@ std::optional<UnrecoverableErrorPolicy> ErrorEnvPolicy()
         // Default to ignore environment
         if (policy == "throw")
             rc = UnrecoverableErrorPolicy::ThrowException;
-        else if (policy == "log")
-            rc = UnrecoverableErrorPolicy::LogException;
-        else if (policy == "ignore")
-            rc = UnrecoverableErrorPolicy::IgnoreException;
-        else if (policy == "terminate")
-            rc = UnrecoverableErrorPolicy::Terminate;
+        else if (policy == "logandthrow")
+            rc = UnrecoverableErrorPolicy::LogAndThrowException;
+        else if (policy == "logandcallhandler")
+            rc = UnrecoverableErrorPolicy::LogAndCallHandler;
+        else if (policy == "logandabort")
+            rc = UnrecoverableErrorPolicy::logAndAbort;
         // else - ignored
     }
     return rc;
@@ -57,12 +57,12 @@ UnrecoverableErrorPolicy ErrorConfiguredPolicy()
     static auto axzlErrorPolicy =
 #if defined(AXZL_UNRECOVERABLE_ERROR_POLICY_THROW)
         UnrecoverableErrorPolicy::ThrowException;
-#elif defined(AXZL_UNRECOVERABLE_ERROR_POLICY_LOG)
-        UnrecoverableErrorPolicy::LogException;
-#elif defined(AXZL_UNRECOVERABLE_ERROR_POLICY_IGNORE)
-        UnrecoverableErrorPolicy::IgnoreException;
-#elif defined(AXZL_UNRECOVERABLE_ERROR_POLICY_TERMINATE)
-        UnrecoverableErrorPolicy::Terminate;
+#elif defined(AXZL_UNRECOVERABLE_ERROR_POLICY_LOG_AND_THROW)
+        UnrecoverableErrorPolicy::LogAndThrowException;
+#elif defined(AXZL_UNRECOVERABLE_ERROR_POLICY_LOG_AND_CALL_HANDLER)
+        UnrecoverableErrorPolicy::logAndCallHandler;
+#elif defined(AXZL_UNRECOVERABLE_ERROR_POLICY_LOG_AND_ABORT)
+        UnrecoverableErrorPolicy::Abort;
 #else
         UnrecoverableErrorPolicy::ThrowException;
 #endif
@@ -85,22 +85,31 @@ UnrecoverableErrorPolicy ErrorPolicy()
 // void Throw(Error& err)
 void Throw(LogPtr& log, const std::exception& exc)
 {
+    log->Critical("Exception! {}", exc.what());
+    // TODO NEED FLUSH HERE before throw!!
+
     // Based on policy
     switch (ErrorPolicy())
     {
     case UnrecoverableErrorPolicy::ThrowException:
+    case UnrecoverableErrorPolicy::LogAndThrowException:
         throw(exc);
         break;
-    case UnrecoverableErrorPolicy::LogException:
-        // Log
-        log->Critical("Exception! {}", exc.what());
+
+    case UnrecoverableErrorPolicy::LogAndCallHandler:
+        if (NoThrowHandler)
+            NoThrowHandler(exc);
+        else
+            abort();
         break;
-    case UnrecoverableErrorPolicy::IgnoreException:
-        break;
-    case UnrecoverableErrorPolicy::Terminate:
-        std::terminate();
+
+    case UnrecoverableErrorPolicy::logAndAbort:
+        abort();
         break;
     }
+
+    // superfluous abort
+    abort();
 }
 
 /*

@@ -10,7 +10,9 @@
 #include "StringView.hpp"
 
 #include <functional>
+#include <initializer_list>
 #include <memory>
+#include <optional>
 #include <pthread.h>
 #include <string>
 #include <sys/resource.h>
@@ -27,8 +29,46 @@ namespace Axzl
  */
 class Thread
 {
-
 public:
+    /**
+     * Configuration
+     */
+    struct Config
+    {
+        bool mInherit;
+        std::optional<SchedulerParams> mSched = std::nullopt;
+        std::optional<bool> mDetach = std::nullopt;
+        std::optional<std::size_t> mStackSize = std::nullopt;
+        std::optional<std::size_t> mGuardSize = std::nullopt;
+        std::optional<cpu_set_t> mCpuCores = std::nullopt;
+
+        /**
+         *  Create Config
+         *  Either inherit from current thread, or use system defaults.
+         *  Scheduler parameters are _always_ inherited from calling thread, unless
+         *      explicitly defined.
+         */
+        explicit Config(bool inherit = true)
+        : mInherit(inherit)
+        {
+        }
+
+        // Combination of all scheduler parameters
+        Config& SetScheduler(const SchedulerParams& params);
+        // Or these individual Scheduler options
+        /* These are probably undesirable... set both, not one at a time
+        Config& SetSchedulerPolicy(SchedulerParams::Policy policy);
+        Config& SetSchedulerPriority(int prio);
+        Config& SetSchedulerNice(int nice);
+        */
+
+        // Other parameters
+        Config& SetDetached(bool detached);
+        Config& SetStackSize(std::size_t size);
+        Config& SetAffinity(cpu_set_t cores);
+        Config& SetAffinity(std::initializer_list<unsigned int>& cores);
+    };
+
     /**
      * Constructor
      *  Create and run a new thread
@@ -36,17 +76,11 @@ public:
     template <typename Func, typename... Args>
     explicit Thread(string_view name,
         LogPtr log,
-        /* Thread Parameters */
-        const SchedulerParams& sched,
+        const Config& cfg,
         Func&& func, Args&&... args)
     : mName(name.empty() ? "NotSmartThread" : name)
     , mLog(log ? log : GetLog())
-    , mSchedParams(sched)
     {
-        /// todo
-        // Validate scheduler
-        // static_assert...
-
         /**
          * Bundle the callable and arguments into a tuple. Decay ensures we copy values
          *  rather than storing dangling refs to variables on the caller's stack.
@@ -58,52 +92,56 @@ public:
             this, CallData(std::forward<Func>(func), std::forward<Args>(args)...));
 
         // Get attributes
-        auto attr = CreateAttributes();
+        Attributes attr { mName, mLog, cfg };
+        // Save sched prior to launching new thread - need to know if setting nice value
+        mSched = cfg.mSched;
 
         // Start thread
-        int rc = pthread_create(&mTid, attr.get(), &Thread::ThreadEntry<CallData>, ctx.get());
+        int rc = pthread_create(&mTid, &attr.mAttr.attr, &Thread::ThreadEntry<CallData>, ctx.get());
         if (rc != 0)
         {
             // Throw
-            ThrowSystemError(mLog, mName, __func__, rc, "pthread_create");
+            ThrowSystemError(mName, mLog, __func__, rc, "pthread_create");
         }
         else
         {
             /* New thread created, release callData to thread */
             ctx.release();
-            mJoin = true;
-            mLog->Trace("{}:{} thread ctor", __func__, mName);
+            if (cfg.mDetach && cfg.mDetach.value())
+                mJoin = false;
+            else
+                mJoin = true;
+
+            mLog->Trace("{}:{} thread ctor (detached:{})", __func__, mName, mJoin);
         }
     }
-#if 0
+
+    /**
+     * Create a new Thread
+     * Inherit current thread
+     */
     template <typename Func, typename... Args>
     explicit Thread(string_view name,
         LogPtr log,
         Func&& func, Args&&... args)
-    : Thread(log, {}, std::forward<Func>(func), std::forward<Args>(args)...)
+    : Thread(name, log, Config { true }, std::forward<Func>(func), std::forward<Args>(args)...)
     {
     }
-#endif
 
-    /** Join thread - block waiting for join to complete */
-    void Join()
+    /**
+     * Create a new Thread
+     * Inherit current thread, but set an explicit scheduler policy / parameters
+     */
+    template <typename Func, typename... Args>
+    explicit Thread(string_view name,
+        LogPtr log,
+        const SchedulerParams& sched,
+        Func&& func, Args&&... args)
+    : Thread(log, Config { true }.SetScheduler(sched), std::forward<Func>(func), std::forward<Args>(args)...)
     {
-        if (mJoin)
-        {
-            // Do join
-            mLog->Debug("{}:{} begin join...", __func__, mName);
-            void* threadRet;
-            int rc = pthread_join(mTid, &threadRet);
-            if (rc != 0)
-                mLog->Error("{}:{} join error '{}'", __func__, mName, strerror(rc));
-            else
-                mLog->Debug("{}:{} joined", __func__, mName);
-
-            mJoin = false;
-        }
     }
 
-    /** Destructor */
+    /** Destructor - will Join() by default */
     ~Thread()
     {
         Join();
@@ -122,7 +160,6 @@ public:
     , mLog(from.mLog)
     , mJoin(from.mJoin)
     , mTid(from.mTid)
-    , mSchedParams(from.mSchedParams)
     {
         /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
         from.mJoin = false;
@@ -137,7 +174,6 @@ public:
             mLog = from.mLog;
             mJoin = from.mJoin;
             mTid = from.mTid;
-            mSchedParams = from.mSchedParams;
             /* Mark mJoin as false and old Thread won't do anything on Join/dtor */
             from.mJoin = false;
             from.mLog = nullptr;
@@ -145,53 +181,58 @@ public:
         return *this;
     }
 
+    /** Join thread - block waiting for join to complete */
+    void Join();
+
+    /**
+     * Return native handle for OS operations, if desired
+     */
+    using NativeHandleType = pthread_t;
+    NativeHandleType NativeHandle() { return mTid; }
+    using native_handle_type = pthread_t;
+    native_handle_type native_handle() { return NativeHandle(); }
+
+    /**
+     * Update the RT priority or nice value after the thread has started
+     *
+     * @prio RT Prio or nice value to set
+     */
+    void UpdatePriority(int prio);
+
 private:
-    struct AttributeDestroyer
+    /**
+     * Scoped wrapper around pthread_attr_t
+     *  _attr_init is called on construction / _destroy on destruction
+     */
+    struct ScopedPosixAttr
     {
-        void operator()(pthread_attr_t* attr) const
-        {
-            pthread_attr_destroy(attr);
-            delete attr;
-        }
+        // pthread_mutexattr_t is not copyable/movable
+        pthread_attr_t attr;
+
+        ScopedPosixAttr(string_view name, LogPtr log);
+        ~ScopedPosixAttr();
     };
-    using Attributes = std::unique_ptr<pthread_attr_t, AttributeDestroyer>;
 
-    Attributes CreateAttributes()
+    /** POSIX Thread Attributes for thread */
+    struct Attributes
     {
-        auto attr = Attributes(new pthread_attr_t);
+        ScopedPosixAttr mAttr;
 
-        int rc = pthread_attr_init(attr.get());
-        if (rc != 0)
-            ThrowSystemError(mLog, mName, __func__, rc, "pthread_attr_init");
+        Attributes(string_view name, LogPtr log, const Config& cfg);
 
-        return attr;
-    }
+        Attributes(const Attributes& from) = delete;
+        Attributes(Attributes&& from) = delete;
+        Attributes& operator=(const Attributes& from) = delete;
+        Attributes& operator=(Attributes&& from) = delete;
+    };
 
     /**
      * Setup thread after ThreadEntry
      */
-    void PostThreadEntryInit()
-    {
-        // can you only set nice after thread create?
-
-        /** If non-realtime, set nice value */
-        if (mSchedParams.policy != SchedulerParams::Policy::RealtimeFifo
-            && mSchedParams.policy != SchedulerParams::Policy::RealtimeRoundRobin
-            && mSchedParams.policy != SchedulerParams::Policy::RealtimeDeadline)
-        {
-            // setpriority(PRIO_PROCESS, 0, This->mSchedParams.prio);
-        }
-
-        // nice value??
-
-        // Set thread name, remember Linux only uses 15 characters
-        constexpr std::size_t MAX_THREADNAME_CHARS = 15;
-        pthread_setname_np(pthread_self(),
-            mName.substr(MAX_THREADNAME_CHARS).c_str());
-    }
+    void PostThreadEntryInit();
 
     /**
-     * Context to pass to thread
+     * Context to pass to thread - used to pass both 'this', and CallData (function & args)
      */
     template <typename CallData>
     struct Context
@@ -205,6 +246,7 @@ private:
         {
         }
     };
+
     /**
      * Thread Entry point - to avoid type-erasure, use a (small) template
      */
@@ -243,7 +285,8 @@ private:
     /** Thread ID */
     pthread_t mTid;
 
-    /** Scheduler data */
-    SchedulerParams mSchedParams;
+    /** If defined, scheduling parameters */
+    std::optional<SchedulerParams> mSched { std::nullopt };
 };
+
 }

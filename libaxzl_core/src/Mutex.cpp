@@ -11,13 +11,14 @@
 
 namespace Axzl
 {
-
+///////////////////////////////////////////////////////////////////////////////////////////////////
 Mutex::Config& Mutex::Config::SetRecursive()
 {
     mType = PTHREAD_MUTEX_RECURSIVE;
     return *this;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
 Mutex::Config& Mutex::Config::SetSharedMem()
 {
     mShare = PTHREAD_PROCESS_SHARED;
@@ -25,6 +26,7 @@ Mutex::Config& Mutex::Config::SetSharedMem()
     return *this;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
 Mutex::Config& Mutex::Config::SetSharedMemDestroy()
 {
     mShare = PTHREAD_PROCESS_SHARED;
@@ -33,18 +35,21 @@ Mutex::Config& Mutex::Config::SetSharedMemDestroy()
     return *this;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
 Mutex::Config& Mutex::Config::SetRobust()
 {
     mRobust = PTHREAD_MUTEX_ROBUST;
     return *this;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
 Mutex::Config& Mutex::Config::SetPrioInherit()
 {
     mProto = PTHREAD_PRIO_INHERIT;
     return *this;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
 Mutex::Config& Mutex::Config::SetErrorCheck()
 {
     mType = PTHREAD_MUTEX_ERRORCHECK;
@@ -52,51 +57,61 @@ Mutex::Config& Mutex::Config::SetErrorCheck()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+Mutex::ScopedPosixAttr::ScopedPosixAttr(string_view name, LogPtr log)
+{
+    int rc = pthread_mutexattr_init(&attr);
+    if (rc != 0)
+        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_init failure");
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Mutex::ScopedPosixAttr::~ScopedPosixAttr()
+{
+    (void)pthread_mutexattr_destroy(&attr);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+Mutex::Attributes::Attributes(string_view name, LogPtr log, const Config& cfg)
+: mAttr(name, log)
+{
+    int rc = pthread_mutexattr_settype(&mAttr.attr, static_cast<int>(cfg.mType));
+    if (rc != 0)
+        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_settype");
+
+    rc = pthread_mutexattr_setpshared(&mAttr.attr, static_cast<int>(cfg.mShare));
+    if (rc != 0)
+        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setpshared");
+
+    rc = pthread_mutexattr_setpshared(&mAttr.attr, static_cast<int>(cfg.mShare));
+    if (rc != 0)
+        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setpshared");
+
+    rc = pthread_mutexattr_setrobust(&mAttr.attr, static_cast<int>(cfg.mRobust));
+    if (rc != 0)
+        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setrobust");
+
+    rc = pthread_mutexattr_setprotocol(&mAttr.attr, static_cast<int>(cfg.mProto));
+    if (rc != 0)
+        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setprotocol");
+
+    if (cfg.mProto == PTHREAD_PRIO_PROTECT)
+    {
+        rc = pthread_mutexattr_setprioceiling(&mAttr.attr, cfg.mPrioCeiling);
+        if (rc != 0)
+            ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setprioceiling");
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void Mutex::Init(const Mutex::Config& cfg)
 {
-    pthread_mutexattr_t pAttr;
-    int rc = pthread_mutexattr_init(&pAttr);
-    if (rc != 0)
-        ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutexattr_init");
+    // Scoped attribute will automatically clean-up via ScopedAttr
+    Attributes attr { mName, mLog, cfg };
 
-    /* Immediate exec - Need to destroy pthread attr object if failure occurs */
-    const char* errorFunc = [this, &lrc = rc, &lpAttr = pAttr, &lcfg = cfg]() -> const char*
-    {
-        lrc = pthread_mutexattr_settype(&lpAttr, static_cast<int>(lcfg.mType));
-        if (lrc != 0)
-            return "pthread_mutexattr_settype";
-
-        lrc = pthread_mutexattr_setpshared(&lpAttr, static_cast<int>(lcfg.mShare));
-        if (lrc != 0)
-            return "pthread_mutexattr_setpshared";
-
-        lrc = pthread_mutexattr_setrobust(&lpAttr, static_cast<int>(lcfg.mRobust));
-        if (lrc != 0)
-            return "pthread_mutexattr_setrobust";
-
-        lrc = pthread_mutexattr_setprotocol(&lpAttr, static_cast<int>(lcfg.mProto));
-        if (lrc != 0)
-            return "pthread_mutexattr_setprotocol";
-
-        if (lcfg.mProto == PTHREAD_PRIO_PROTECT)
-        {
-            lrc = pthread_mutexattr_setprioceiling(&lpAttr, lcfg.mPrioCeiling);
-            if (lrc != 0)
-                return "pthread_mutexattr_setprioceiling";
-        }
-
-        lrc = pthread_mutex_init(mMutex, &lpAttr);
-        if (lrc != 0)
-            return "pthread_mutex_init";
-
-        return nullptr;
-    }();
-    // Cleanup attribute
-    pthread_mutexattr_destroy(&pAttr);
-
+    int rc = pthread_mutex_init(mMutex, &attr.mAttr.attr);
     if (rc != 0)
     {
-        ThrowSystemError(mLog, mName, __func__, rc, errorFunc);
+        ThrowSystemError(mName, mLog, __func__, rc, "pthread_mutex_init");
     }
     else
     {
@@ -125,18 +140,18 @@ void Mutex::LockFail(int rc)
         }
         else
         {
-            ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_consistent failure");
+            ThrowSystemError(mName, mLog, __func__, rc, "pthread_mutex_consistent failure");
         }
     }
     else
     {
-        ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_lock");
+        ThrowSystemError(mName, mLog, __func__, rc, "pthread_mutex_lock");
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void Mutex::UnlockFail(int rc)
 {
-    ThrowSystemError(mLog, mName, __func__, rc, "pthread_mutex_unlock");
+    ThrowSystemError(mName, mLog, __func__, rc, "pthread_mutex_unlock");
 }
 }

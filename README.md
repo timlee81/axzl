@@ -18,13 +18,13 @@ Axzl classifies errors in three ways:
 - Recoverable / expected errors
   - std::expected (or an included polyfill) is used
 - Unrecoverable errors (e.g. memory exhausted)
-  - Either an exception, a log entry, or ignored (see Unrecoverable Error Policy)
+  - Either an exception, log + exception, or log + AxzlUnrecoverableError() (see Unrecoverable Error Policy)
 - Programmer / Logic errors
   - assert(s), std::abort, std::terminate, etc
   - Get development attention to fix immediately
 
 It is recommended to compile Axzl library with exceptions enabled. Exceptions are designed
-for unrecoverable errors and, when used correctly, offer many benefits.
+for unrecoverable errors (only) and, when used correctly, offer many benefits.
 
 Axzl won't preclude code used (internally to Axzl) from propagating thrown exceptions (e.g. std::out_of_range). Axzl will not utilize try / catch statements, as Axzl won't handle
 unrecoverable errors. Based on the the configured Unrecoverable Error Policy, Axzl may
@@ -33,15 +33,15 @@ throw exceptions when unrecoverable errors occur. Axzl is capable of working in 
 
 ### Unrecoverable Error Policy
 
-When unrecoverable errors are encountered as part of Axzl code, Axzl::Throw() will be be invoked and will select one of the following options (based on configuration).
+When unrecoverable errors are encountered as part of Axzl code, Axzl::Throw() will be invoked and will select one of the following options (based on configuration).
 
-- Exception
-- Log error
-- Log, flush log, exception
-- Ignore
+- Throw exception
+- Log, flush log, throw exception
+- Log, flush log, call AxzlUnrecoverableError()
+- log, flush log, and abort()
 
 Unrecoverable Error Policy is utilized via
-- CMake option -DAXZL_THROW
+- CMake option -DAXZL_UNRECOVERABLE_ERROR_POLICY=...
 - Environment variable
 
 #### Scenario 1

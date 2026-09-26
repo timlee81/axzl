@@ -17,9 +17,9 @@ namespace Axzl
 enum class UnrecoverableErrorPolicy
 {
     ThrowException,
-    LogException,
-    IgnoreException,
-    Terminate,
+    LogAndThrowException,
+    LogAndCallHandler,
+    logAndAbort,
 };
 
 // Forward declare Log
@@ -30,7 +30,7 @@ class Log;
  *
  * @param exc Exception
  */
-void Throw(const std::exception& exc);
+[[noreturn]] void Throw(const std::exception& exc);
 
 /**
  * Exception Occurred
@@ -38,7 +38,7 @@ void Throw(const std::exception& exc);
  * @param log Log to write to
  * @param exc Exception
  */
-void Throw(LogPtr& log, const std::exception& exc);
+[[noreturn]] void Throw(LogPtr& log, const std::exception& exc);
 
 /**
  * Exception Occurred
@@ -46,15 +46,22 @@ void Throw(LogPtr& log, const std::exception& exc);
  * @param log Log to write to
  * @param exc Exception
  */
-inline void ThrowSystemError(LogPtr& log, string_view name, int rv, string_view what)
+[[noreturn]] inline void ThrowSystemError(string_view name, LogPtr log, int rc, string_view what)
 {
-    Throw(log, std::system_error(rv, std::system_category(), fmt::format("{}: {}", name, what)));
+    Throw(log, std::system_error(rc, std::system_category(), fmt::format("{}: {}", name, what)));
 }
 
 // __func__ version
-inline void ThrowSystemError(LogPtr& log, string_view name, string_view where, int rv, string_view what)
+[[noreturn]] inline void ThrowSystemError(string_view name, LogPtr log, string_view where, int rc, string_view what)
 {
-    Throw(log, std::system_error(rv, std::system_category(), fmt::format("{}@{}: {}", name, where, what)));
+    Throw(log, std::system_error(rc, std::system_category(), fmt::format("{}@{}: {}", name, where, what)));
 }
+#define AXZL_THROW_SYS_ERROR(name, log, rc, what) \
+    ThrowSystemError(name, log, __func__ __LINE__, rc, what)
+
+/**
+ * Override this if not throwing exceptions
+ */
+[[noreturn]] void __attribute__((weak)) NoThrowHandler(const std::exception& exc);
 
 }

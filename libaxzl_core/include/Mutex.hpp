@@ -39,6 +39,7 @@ public:
         int mProto { PTHREAD_PRIO_NONE };
         int mPrioCeiling { -1 };
 
+        /** Recursive mutex */
         Config& SetRecursive();
         /** ROBUST and SHARED set, NO Destroy on destruction */
         Config& SetSharedMem();
@@ -122,13 +123,13 @@ public:
     }
 
     /** Move constructor  */
-    Mutex(Mutex&& other) = delete;
+    Mutex(Mutex&& from) = delete;
     /** Move-assign omitted: would need to destroy an existing mutex first. */
-    Mutex& operator=(Mutex&&) = delete;
+    Mutex& operator=(Mutex&& from) = delete;
 
     /** Disable Copy and Assignment */
-    Mutex(const Mutex&) = delete;
-    Mutex& operator=(const Mutex&) = delete;
+    Mutex(const Mutex& from) = delete;
+    Mutex& operator=(const Mutex& from) = delete;
 
     /** Destructor */
     ~Mutex() noexcept
@@ -212,7 +213,7 @@ public:
         }
         else
         {
-            ThrowSystemError(mLog, mName, __func__, EINVAL, "pthread mutex clockid_t failure");
+            ThrowSystemError(mName, mLog, __func__, EINVAL, "pthread mutex clockid_t failure");
         }
 
         // Convert timeout to posix abs time
@@ -241,6 +242,27 @@ public:
     }
 
 private:
+    struct ScopedPosixAttr
+    {
+        // pthread_mutexattr_t is not copyable/movable
+        pthread_mutexattr_t attr;
+
+        ScopedPosixAttr(string_view name, LogPtr log);
+        ~ScopedPosixAttr();
+    };
+
+    struct Attributes
+    {
+        ScopedPosixAttr mAttr;
+
+        Attributes(string_view name, LogPtr log, const Config& cfg);
+
+        Attributes(const Attributes& from) = delete;
+        Attributes(Attributes&& from) = delete;
+        Attributes& operator=(const Attributes& from) = delete;
+        Attributes& operator=(Attributes&& from) = delete;
+    };
+
     /**
      * Initialize the mutex with attributes
      */
