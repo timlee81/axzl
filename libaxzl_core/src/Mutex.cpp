@@ -82,10 +82,6 @@ Mutex::Attributes::Attributes(string_view name, LogPtr log, const Config& cfg)
     if (rc != 0)
         ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setpshared");
 
-    rc = pthread_mutexattr_setpshared(&mAttr.attr, static_cast<int>(cfg.mShare));
-    if (rc != 0)
-        ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setpshared");
-
     rc = pthread_mutexattr_setrobust(&mAttr.attr, static_cast<int>(cfg.mRobust));
     if (rc != 0)
         ThrowSystemError(name, log, __func__, rc, "pthread_mutexattr_setrobust");

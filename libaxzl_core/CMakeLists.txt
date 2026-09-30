@@ -6,6 +6,7 @@ add_library(axzl_core
     src/StdOutLog.cpp
     src/Mutex.cpp
     src/Thread.cpp
+    src/ConditionVariable.cpp
 )
 
 target_include_directories(axzl_core PUBLIC

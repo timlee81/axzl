@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include "ClockUtility.hpp"
 #include "Log.hpp"
 
 #include <chrono>
@@ -53,6 +54,7 @@ public:
         Config& SetErrorCheck();
     };
 
+    /** Disable default constructor */
     Mutex() = delete;
 
     /**
@@ -66,11 +68,8 @@ public:
         LogPtr log,
         const Config& cfg)
     : mName(name.empty() ? "NotSmartMtx" : name)
-    , mLog(std::move(log))
+    , mLog(log ? std::move(log) : GetLog())
     {
-        if (!mLog)
-            mLog = GetLog();
-
         mMutex = new pthread_mutex_t;
         Init(cfg);
     }
@@ -87,11 +86,8 @@ public:
         bool create,
         const Config& cfg)
     : mName(name.empty() ? "NotSmartMtx" : name)
-    , mLog(std::move(log))
+    , mLog(log ? std::move(log) : GetLog())
     {
-        if (!mLog)
-            mLog = GetLog();
-
         mMutex = reinterpret_cast<pthread_mutex_t*>(mtx);
         if (create)
             Init(cfg);
@@ -147,6 +143,14 @@ public:
     }
 
     /**
+     * Return native handle for OS operations, if desired
+     */
+    using NativeHandleType = pthread_mutex_t;
+    NativeHandleType* NativeHandle() { return mMutex; }
+    using native_handle_type = pthread_mutex_t;
+    native_handle_type* native_handle() { return NativeHandle(); }
+
+    /**
      * Lock Mutex
      *
      * Robust mutex lock failure will attempt make the mutex consistent and try again.
@@ -200,35 +204,10 @@ public:
     template <typename Clock, typename Duration>
     bool TryLockUntil(const std::chrono::time_point<Clock, Duration>& timeoutTp)
     {
-        using namespace std::chrono;
-
-        clockid_t clkId = CLOCK_MONOTONIC;
-        if constexpr (std::is_same_v<Clock, steady_clock>)
-        {
-            // Default CLOCK_MONOTONIC
-        }
-        else if constexpr (std::is_same_v<Clock, system_clock>)
-        {
-            clkId = CLOCK_REALTIME;
-        }
-        else
-        {
-            ThrowSystemError(mName, mLog, __func__, EINVAL, "pthread mutex clockid_t failure");
-        }
-
-        // Convert timeout to posix abs time
-        auto toDurNs = duration_cast<nanoseconds>(timeoutTp.time_since_epoch());
-        auto secs = duration_cast<seconds>(toDurNs);
-        auto nsecs = toDurNs - secs;
-        // Handle negative ns case (can't be negative)
-        if (nsecs.count() < 0)
-        {
-            secs -= seconds(1);
-            nsecs += seconds(1);
-        }
-        timespec ts;
-        ts.tv_sec = static_cast<time_t>(secs.count());
-        ts.tv_nsec = static_cast<long>(nsecs.count());
+        //  Lookup clock_t
+        clockid_t clkId = ClockId(timeoutTp);
+        //  Convert timeout to posix abs time
+        timespec ts = DurationToTimespec(timeoutTp);
 
         // Wait on the requested clock
         int rc = pthread_mutex_clocklock(mMutex, clkId, &ts);
